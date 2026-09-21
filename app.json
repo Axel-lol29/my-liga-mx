@@ -1,11 +1,13 @@
 {
   "expo": {
-    "name": "my-liga-mx-bootstrap",
-    "slug": "my-liga-mx-bootstrap",
+    "name": "My Liga MX",
+    "slug": "my-liga-mx",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "scheme": "myligamx",
+    "plugins": ["expo-router"],
     "ios": {
       "supportsTablet": true
     },
