@@ -5,6 +5,7 @@ import { AppText, Card, MatchCard, Screen, StateView, TeamLogo } from '../../com
 import { useSportsDbFixtures, useStandings, useTeam } from '../../src/hooks/useData';
 import { Fixture, Team } from '../../src/types';
 import { getSportsDbTeamId, resolveTeam, TeamCatalogEntry } from '../../src/services/sportsDb/config';
+import { getTeamByInternalId } from '../../src/constants/ligaMxTeams';
 import { useTheme } from '../../src/theme/ThemeProvider';
 
 export default function TeamDetailScreen(): React.JSX.Element {
@@ -32,12 +33,13 @@ export default function TeamDetailScreen(): React.JSX.Element {
 
   if (team.isLoading) return <Screen><StateView kind="loading" /></Screen>;
   if (!resolved || !resolvedTeam) { console.log('TEAM DETAIL unresolved:', { receivedId: receivedIdentifier, receivedName: null, slug: receivedIdentifier }); return <Screen><StateView kind="error" message={team.error instanceof Error ? team.error.message : 'Equipo no encontrado.'} onRetry={() => void team.refetch()} /></Screen>; }
+  const catalogBadge = getTeamByInternalId(resolved.internalId)?.badge ?? null;
   const row = standings.data?.find((item) => item.team.id === internalId || item.team.id === id || getSportsDbTeamId(item.team) === resolved.sportsDbId);
   const fixturesLoading = fixtures.isLoading;
 
   return <Screen refreshing={team.isRefetching || fixtures.isRefetching} onRefresh={() => { void team.refetch(); void fixtures.refetch(); }}>
     <Stack.Screen options={{ headerShown: true, title: resolvedTeam.name, headerBackTitle: 'Atrás' }} />
-    <Card style={styles.heroCard}><View style={styles.heroIdentity}><TeamLogo team={resolvedTeam} size={94} /><AppText size={12} color={colors.primary} weight="bold">MY LIGA MX · EQUIPO</AppText><AppText size={27} weight="bold">{resolvedTeam.name}</AppText><AppText color={colors.muted}>Liga MX · {resolvedTeam.city ?? 'México'}</AppText><AppText size={13} color={colors.muted}>{resolvedTeam.venue ?? 'Estadio no disponible'}</AppText></View>{row ? <View style={styles.heroSummary}><View style={styles.positionBlock}><AppText size={12} color={colors.muted}>POSICIÓN</AppText><AppText size={28} weight="bold" color={colors.primary}>#{row.rank}</AppText></View><View style={styles.pointsBlock}><AppText size={12} color={colors.muted}>PUNTOS</AppText><AppText size={28} weight="bold">{row.points}</AppText></View></View> : null}</Card>
+    <Card style={styles.heroCard}><View style={styles.heroIdentity}><TeamLogo team={{ ...resolvedTeam, logo: catalogBadge }} size={112} fallbackOnError /><AppText size={12} color={colors.primary} weight="bold">MY LIGA MX · EQUIPO</AppText><AppText size={27} weight="bold">{resolvedTeam.name}</AppText><AppText color={colors.muted}>Liga MX · {resolvedTeam.city ?? 'México'}</AppText><AppText size={13} color={colors.muted}>{resolvedTeam.venue ?? 'Estadio no disponible'}</AppText></View>{row ? <View style={styles.heroSummary}><View style={styles.positionBlock}><AppText size={12} color={colors.muted}>POSICIÓN</AppText><AppText size={28} weight="bold" color={colors.primary}>#{row.rank}</AppText></View><View style={styles.pointsBlock}><AppText size={12} color={colors.muted}>PUNTOS</AppText><AppText size={28} weight="bold">{row.points}</AppText></View></View> : null}</Card>
     {row ? <><AppText size={12} color={colors.primary} weight="bold" style={styles.sectionLabel}>ESTADÍSTICAS</AppText><Card style={styles.statsCard}><View style={styles.statsGrid}><StatMetric label="PJ" value={row.played} /><StatMetric label="G" value={row.wins} /><StatMetric label="E" value={row.draws} /><StatMetric label="P" value={row.losses} /></View><View style={[styles.statsGrid, styles.secondaryStats, { borderTopColor: colors.border }]}><StatMetric label="GF" value={row.goalsFor} /><StatMetric label="GC" value={row.goalsAgainst} /><StatMetric label="DG" value={row.goalDifference} signed /></View></Card></> : null}
     <AppText size={12} color={colors.primary} weight="bold" style={styles.sectionLabel}>PARTIDOS</AppText>
     {fixturesLoading ? <StateView kind="loading" /> : fixtures.isError ? <StateView kind="error" message={fixtures.error instanceof Error ? fixtures.error.message : 'No pudimos cargar los partidos del equipo.'} onRetry={() => void fixtures.refetch()} /> : <>
