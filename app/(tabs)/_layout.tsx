@@ -15,7 +15,7 @@ export default function TabsLayout(): React.JSX.Element {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: {
-          backgroundColor: colors.surface,
+          backgroundColor: colors.background,
           borderTopColor: colors.border,
           height: 68,
           paddingTop: 7,

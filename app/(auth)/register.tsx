@@ -1,7 +1,80 @@
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { AppLogo } from '../../components/AppLogo';
 import { AppText, Field, PrimaryButton, Screen, styles } from '../../components/ui';
 import { signUp } from '../../src/services/auth/authService';
 import { useTheme } from '../../src/theme/ThemeProvider';
-export default function RegisterScreen(): React.JSX.Element { const { colors } = useTheme(); const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [confirm, setConfirm] = useState(''); const [loading, setLoading] = useState(false); const submit = async (): Promise<void> => { console.log('REGISTRO: botón presionado'); if (!name.trim() || !email.includes('@') || password.length < 8 || password !== confirm) { Alert.alert('Revisa tus datos', 'Completa tu nombre, usa un correo válido y una contraseña de 8 caracteres que coincida.'); return; } setLoading(true); try { console.log('REGISTRO: antes de llamar a Supabase', { email: email.trim() }); const result = await signUp(name.trim(), email.trim(), password); console.log('REGISTRO: respuesta de Supabase', result); if (!result.hasSession) { Alert.alert('Confirma tu correo', 'Revisa tu correo electrónico para confirmar la cuenta antes de iniciar sesión.', [{ text: 'Ir a iniciar sesión', onPress: () => router.replace('/(auth)/login') }]); return; } Alert.alert('Cuenta creada', 'Ahora elige tu equipo favorito.', [{ text: 'Continuar', onPress: () => router.replace('/(auth)/select-team') }]); } catch (error) { console.error('REGISTRO: error completo', error); Alert.alert('No pudimos crear tu cuenta', error instanceof Error ? error.message : 'Intenta nuevamente.'); } finally { setLoading(false); } }; return <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen><View style={{ flex: 1, justifyContent: 'center' }}><AppText size={32} weight="bold">Crea tu cuenta</AppText><AppText color={colors.muted}>Personaliza tu experiencia de Liga MX.</AppText><View style={{ height: 24 }} /><Field label="Nombre" value={name} onChangeText={setName} placeholder="Tu nombre" /><Field label="Correo electrónico" value={email} onChangeText={setEmail} placeholder="tu@correo.com" keyboardType="email-address" /><Field label="Contraseña" value={password} onChangeText={setPassword} placeholder="Mínimo 8 caracteres" secureTextEntry /><Field label="Confirmar contraseña" value={confirm} onChangeText={setConfirm} placeholder="Repite tu contraseña" secureTextEntry /><PrimaryButton title="Crear cuenta" onPress={() => void submit()} loading={loading} /><View style={styles.authLink}><AppText color={colors.muted}>¿Ya tienes cuenta? </AppText><Pressable onPress={() => router.replace('/(auth)/login')}><AppText color={colors.primary} weight="bold">Iniciar sesión</AppText></Pressable></View></View></Screen></KeyboardAvoidingView>; }
+
+export default function RegisterScreen(): React.JSX.Element {
+  const { colors } = useTheme();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (): Promise<void> => {
+    console.log('REGISTRO: botón presionado');
+    if (!name.trim() || !email.includes('@') || password.length < 8 || password !== confirm) {
+      Alert.alert('Revisa tus datos', 'Completa tu nombre, usa un correo válido y una contraseña de 8 caracteres que coincida.');
+      return;
+    }
+    setLoading(true);
+    try {
+      console.log('REGISTRO: antes de llamar a Supabase', { email: email.trim() });
+      const result = await signUp(name.trim(), email.trim(), password);
+      console.log('REGISTRO: respuesta de Supabase', result);
+      if (!result.hasSession) {
+        Alert.alert('Confirma tu correo', 'Revisa tu correo electrónico para confirmar la cuenta antes de iniciar sesión.', [
+          { text: 'Ir a iniciar sesión', onPress: () => router.replace('/(auth)/login') },
+        ]);
+        return;
+      }
+      Alert.alert('Cuenta creada', 'Ahora elige tu equipo favorito.', [
+        { text: 'Continuar', onPress: () => router.replace('/(auth)/select-team') },
+      ]);
+    } catch (error) {
+      console.error('REGISTRO: error completo', error);
+      Alert.alert('No pudimos crear tu cuenta', error instanceof Error ? error.message : 'Intenta nuevamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <Screen>
+        <View style={authStyles.content}>
+          <View style={authStyles.brand}>
+            <AppLogo variant="medium" showWordmark />
+          </View>
+          <View style={authStyles.heading}>
+            <AppText size={28} weight="bold">Crea tu cuenta</AppText>
+            <AppText color={colors.muted}>Personaliza tu experiencia de Liga MX.</AppText>
+          </View>
+          <View style={authStyles.form}>
+            <Field label="Nombre" value={name} onChangeText={setName} placeholder="Tu nombre" />
+            <Field label="Correo electrónico" value={email} onChangeText={setEmail} placeholder="tu@correo.com" keyboardType="email-address" />
+            <Field label="Contraseña" value={password} onChangeText={setPassword} placeholder="Mínimo 8 caracteres" secureTextEntry />
+            <Field label="Confirmar contraseña" value={confirm} onChangeText={setConfirm} placeholder="Repite tu contraseña" secureTextEntry />
+            <PrimaryButton title="Crear cuenta" onPress={() => void submit()} loading={loading} />
+            <View style={styles.authLink}>
+              <AppText color={colors.muted}>¿Ya tienes cuenta? </AppText>
+              <Pressable onPress={() => router.replace('/(auth)/login')}>
+                <AppText color={colors.primary} weight="bold">Iniciar sesión</AppText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Screen>
+    </KeyboardAvoidingView>
+  );
+}
+
+const authStyles = StyleSheet.create({
+  content: { flex: 1, justifyContent: 'center', paddingVertical: 18 },
+  brand: { alignItems: 'center', marginBottom: 18 },
+  heading: { gap: 6, marginBottom: 20 },
+  form: { gap: 0 },
+});

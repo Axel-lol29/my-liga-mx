@@ -1,15 +1,94 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { useColorScheme } from 'react-native';
 import { Team, ThemePreference } from '../types';
+
 const STORAGE_KEY = '@my-liga-mx/theme';
-type ThemeAccent = { primary: string; primaryDark: string; primaryLight: string; accent: string };
-const neutral = { light: { background: '#F4F7F9', surface: '#FFFFFF', surfaceElevated: '#F9FBFC', text: '#13212C', muted: '#687986', border: '#DFE7EC', danger: '#C94D55', success: '#168A63' }, dark: { background: '#0C1419', surface: '#141F26', surfaceElevated: '#1B2932', text: '#F3F7F8', muted: '#9BAEB8', border: '#293A44', danger: '#F27C7C', success: '#57D3A7' } } as const;
-const accents: Record<string, ThemeAccent> = { red: { primary: '#D8494F', primaryDark: '#9E2F38', primaryLight: '#F08A86', accent: '#E8B36B' }, blue: { primary: '#3C8FD9', primaryDark: '#245A91', primaryLight: '#80B9EE', accent: '#7CC4DB' }, gold: { primary: '#D5A634', primaryDark: '#8C671B', primaryLight: '#F0CF70', accent: '#5B8BB4' }, green: { primary: '#2EAF78', primaryDark: '#1B7554', primaryLight: '#78D3A9', accent: '#B7D36B' }, purple: { primary: '#9367D8', primaryDark: '#5B3B94', primaryLight: '#C2A4F0', accent: '#D09BC8' } };
-const defaultAccent = accents.green;
-const getAccent = (team?: Team | null): ThemeAccent => { const name = team?.name.toLowerCase() ?? ''; if (name.includes('atlas') || name.includes('toluca') || name.includes('chivas') || name.includes('guadalajara') || name.includes('necaxa') || name.includes('tijuana') || name.includes('san luis')) return accents.red; if (name.includes('monterrey') || name.includes('rayados') || name.includes('cruz azul') || name.includes('queretaro') || name.includes('pachuca') || name.includes('puebla')) return accents.blue; if (name.includes('tigres') || name.includes('américa') || name.includes('america')) return accents.gold; if (name.includes('mazatlán') || name.includes('mazatlan')) return accents.purple; if (name.includes('león') || name.includes('leon') || name.includes('santos') || name.includes('juárez') || name.includes('juarez')) return accents.green; return defaultAccent; };
-export type AppColors = { background: string; surface: string; surfaceElevated: string; text: string; muted: string; border: string; primary: string; primaryDark: string; primaryLight: string; accent: string; danger: string; success: string };
-export interface AppTheme { preference: ThemePreference; mode: 'light' | 'dark'; colors: AppColors; setPreference: (value: ThemePreference) => void; }
+
+const APP_COLORS = {
+  background: '#0B0F14',
+  surface: '#171E29',
+  surfaceElevated: '#121821',
+  border: '#1F2937',
+  borderSubtle: '#18212E',
+  text: '#F8FAFC',
+  muted: '#94A3B8',
+  mutedSubtle: '#64748B',
+  primary: '#2563EB',
+  primaryDark: '#1D4ED8',
+  primaryLight: '#3B82F6',
+  accent: '#60A5FA',
+  success: '#22C55E',
+  warning: '#F59E0B',
+  danger: '#EF4444',
+} as const;
+
+const TEAM_ACCENTS = {
+  red: '#D8494F',
+  blue: '#3C8FD9',
+  gold: '#D5A634',
+  green: '#2EAF78',
+  purple: '#9367D8',
+} as const;
+
+export type AppColors = typeof APP_COLORS & {
+  teamAccent: string;
+  teamAccentSoft: string;
+  teamAccentBorder: string;
+};
+
+export interface AppTheme {
+  preference: ThemePreference;
+  mode: 'dark';
+  colors: AppColors;
+  setPreference: (value: ThemePreference) => void;
+}
+
+function accentFor(team?: Team | null): string {
+  const name = team?.name.toLocaleLowerCase('es-MX') ?? '';
+  if (['atlas', 'toluca', 'chivas', 'guadalajara', 'necaxa', 'tijuana', 'san luis'].some((namePart) => name.includes(namePart))) return TEAM_ACCENTS.red;
+  if (['monterrey', 'rayados', 'cruz azul', 'queretaro', 'querétaro', 'pachuca', 'puebla'].some((namePart) => name.includes(namePart))) return TEAM_ACCENTS.blue;
+  if (['tigres', 'américa', 'america'].some((namePart) => name.includes(namePart))) return TEAM_ACCENTS.gold;
+  if (['mazatlán', 'mazatlan'].some((namePart) => name.includes(namePart))) return TEAM_ACCENTS.purple;
+  if (['león', 'leon', 'santos', 'juárez', 'juarez'].some((namePart) => name.includes(namePart))) return TEAM_ACCENTS.green;
+  return APP_COLORS.primaryLight;
+}
+
+export function getTeamAccent(team?: Team | null): string {
+  return accentFor(team);
+}
+
 const ThemeContext = createContext<AppTheme | undefined>(undefined);
-export function ThemeProvider({ children, favoriteTeam }: { children: React.ReactNode; favoriteTeam?: Team | null }): React.JSX.Element { const systemScheme = useColorScheme(); const [preference, setPreferenceState] = useState<ThemePreference>('system'); useEffect(() => { void AsyncStorage.getItem(STORAGE_KEY).then((value) => { if (value === 'light' || value === 'dark' || value === 'system') setPreferenceState(value); }); }, []); const setPreference = (value: ThemePreference): void => { setPreferenceState(value); void AsyncStorage.setItem(STORAGE_KEY, value); }; const mode = preference === 'system' ? (systemScheme === 'dark' ? 'dark' : 'light') : preference; const colors = useMemo<AppColors>(() => { const base = neutral[mode]; const accent = getAccent(favoriteTeam); return { ...base, ...accent }; }, [favoriteTeam, mode]); const value = useMemo(() => ({ preference, mode, colors, setPreference }), [colors, mode, preference]); return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>; }
-export function useTheme(): AppTheme { const value = useContext(ThemeContext); if (!value) throw new Error('useTheme debe utilizarse dentro de ThemeProvider'); return value; }
+
+export function ThemeProvider({ children, favoriteTeam }: { children: React.ReactNode; favoriteTeam?: Team | null }): React.JSX.Element {
+  const [preference, setPreferenceState] = useState<ThemePreference>('system');
+
+  useEffect(() => {
+    void AsyncStorage.getItem(STORAGE_KEY).then((value) => {
+      if (value === 'light' || value === 'dark' || value === 'system') setPreferenceState(value);
+    });
+  }, []);
+
+  const setPreference = (value: ThemePreference): void => {
+    setPreferenceState(value);
+    void AsyncStorage.setItem(STORAGE_KEY, value);
+  };
+
+  const colors = useMemo<AppColors>(() => {
+    const teamAccent = accentFor(favoriteTeam);
+    return {
+      ...APP_COLORS,
+      teamAccent,
+      teamAccentSoft: `${teamAccent}14`,
+      teamAccentBorder: `${teamAccent}66`,
+    };
+  }, [favoriteTeam]);
+
+  const value = useMemo<AppTheme>(() => ({ preference, mode: 'dark', colors, setPreference }), [colors, preference]);
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+export function useTheme(): AppTheme {
+  const value = useContext(ThemeContext);
+  if (!value) throw new Error('useTheme debe utilizarse dentro de ThemeProvider');
+  return value;
+}

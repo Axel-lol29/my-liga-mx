@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, FlatList, Pressable, View } from 'react-native';
+import { AppLogo } from '../../components/AppLogo';
 import { AppText, PrimaryButton, Screen, StateView, TeamLogo, styles } from '../../components/ui';
 import { LOCAL_LIGA_MX_TEAMS } from '../../src/constants/ligaMxTeams';
 import { useAuth } from '../../src/context/AuthProvider';
@@ -34,9 +35,13 @@ export default function SelectTeamScreen(): React.JSX.Element {
 
   return (
     <Screen scroll={false}>
-      <AppText size={30} weight="bold">Elige tu equipo</AppText>
-      <AppText color={colors.muted}>Lo usaremos para personalizar tu inicio.</AppText>
-      <View style={{ flex: 1, marginTop: 22 }}>
+      <View style={{ alignItems: 'center', marginBottom: 20 }}>
+        <AppLogo variant="small" showWordmark={false} />
+        <View style={{ height: 12 }} />
+        <AppText size={30} weight="bold">Elige tu equipo</AppText>
+        <AppText color={colors.muted} style={{ textAlign: 'center', marginTop: 4 }}>Lo usaremos para personalizar tu inicio.</AppText>
+      </View>
+      <View style={{ flex: 1 }}>
         {LOCAL_LIGA_MX_TEAMS.length === 0 ? (
           <StateView kind="empty" message="No pudimos cargar los equipos." />
         ) : (

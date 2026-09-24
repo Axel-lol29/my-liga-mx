@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { AppLogo } from '../../components/AppLogo';
 import { AppText, Card, MatchCard, NewsCard, Screen, SectionHeader, StateView, TeamLogo } from '../../components/ui';
 import { getTeamByInternalId, toAppTeam } from '../../src/constants/ligaMxTeams';
 import { useAuth } from '../../src/context/AuthProvider';
@@ -41,7 +42,7 @@ export default function HomeScreen(): React.JSX.Element {
     >
       <View style={homeStyles.welcome}>
         <View>
-          <AppText size={12} color={colors.primary} weight="bold">MY LIGA MX</AppText>
+          <View style={homeStyles.brand}><AppLogo variant="compact" showWordmark={false} /><AppText size={12} color={colors.primaryLight} weight="bold" style={homeStyles.brandText}>MY LIGA MX</AppText></View>
           <AppText size={30} weight="bold">Hola, {profile?.name?.split(' ')[0] ?? 'aficionado'}</AppText>
         </View>
         <View style={[homeStyles.liveDot, { backgroundColor: colors.primary }]} />
@@ -49,14 +50,14 @@ export default function HomeScreen(): React.JSX.Element {
       <AppText color={colors.muted}>Tu resumen de fútbol mexicano.</AppText>
       <SectionHeader title="Tu equipo" action="Cambiar" onPress={() => router.push('/(auth)/select-team')} />
       {favoriteTeam ? (
-        <Card style={{ backgroundColor: colors.surfaceElevated, borderColor: colors.primary + '55' }}>
+        <Card style={{ backgroundColor: colors.surfaceElevated, borderColor: colors.teamAccentBorder }}>
           <View style={homeStyles.teamHero}>
-            <View style={[homeStyles.teamAccent, { backgroundColor: colors.primary }]} />
+            <View style={[homeStyles.teamAccent, { backgroundColor: colors.teamAccent }]} />
             <TeamLogo team={favoriteTeam} size={68} />
             <View style={homeStyles.teamCopy}>
               <AppText size={21} weight="bold">{favoriteTeam.name}</AppText>
               <AppText color={colors.muted}>{favoriteTeam.city ?? 'Liga MX'}</AppText>
-              <AppText size={11} color={colors.primary} weight="bold">EQUIPO FAVORITO</AppText>
+              <AppText size={11} color={colors.teamAccent} weight="bold">EQUIPO FAVORITO</AppText>
             </View>
           </View>
         </Card>
@@ -70,4 +71,4 @@ export default function HomeScreen(): React.JSX.Element {
   );
 }
 
-const homeStyles = StyleSheet.create({ welcome: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, liveDot: { width: 10, height: 10, borderRadius: 5 }, teamHero: { flexDirection: 'row', alignItems: 'center', gap: 14 }, teamAccent: { width: 4, height: 62, borderRadius: 4 }, teamCopy: { flex: 1, gap: 3 }, tableRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1 }, rank: { width: 20, textAlign: 'center' }, teamName: { flex: 1, minWidth: 0 } });
+const homeStyles = StyleSheet.create({ welcome: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, brand: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }, brandText: { letterSpacing: 1 }, liveDot: { width: 10, height: 10, borderRadius: 5 }, teamHero: { flexDirection: 'row', alignItems: 'center', gap: 14 }, teamAccent: { width: 4, height: 62, borderRadius: 4 }, teamCopy: { flex: 1, gap: 3 }, tableRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1 }, rank: { width: 20, textAlign: 'center' }, teamName: { flex: 1, minWidth: 0 } });

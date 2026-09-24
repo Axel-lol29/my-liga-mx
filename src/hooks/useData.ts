@@ -5,7 +5,7 @@ import { getFixtureStatistics } from '../services/apiFootball/statisticsService'
 import { getStandings } from '../services/apiFootball/standingsService';
 import { getNextFixture, getSportsDbEventDetail, getSportsDbEventLineup, getSportsDbEventStatistics, getSportsDbEventTimeline, getSportsDbFixtures } from '../services/sportsDb/sportsDbService';
 import { getTeam, getTeams } from '../services/apiFootball/teamsService';
-import { getNews } from '../services/news/newsService';
+import { getNews, NewsQuery } from '../services/news/newsService';
 export const useFixtures = (params?: { teamId?: number; status?: string }) => useQuery({ queryKey: ['fixtures', params], queryFn: () => getFixtures(params), enabled: params?.teamId !== 0 });
 export const useFixture = (id: number) => useQuery({ queryKey: ['fixture', id], queryFn: () => getFixture(id), enabled: id > 0 });
 export const useFixtureEvents = (id: number) => useQuery({ queryKey: ['fixture-events', id], queryFn: () => getFixtureEvents(id), enabled: id > 0 });
@@ -19,4 +19,4 @@ export const useSportsDbEventStatistics = (eventId?: string, enabled = true) => 
 export const useSportsDbEventLineup = (eventId?: string, enabled = true) => useQuery({ queryKey: ['sports-db-event-lineup', eventId], queryFn: () => getSportsDbEventLineup(eventId as string), enabled: Boolean(eventId) && enabled });
 export const useTeams = () => useQuery({ queryKey: ['teams'], queryFn: getTeams });
 export const useTeam = (id: number) => useQuery({ queryKey: ['team', id], queryFn: () => getTeam(id), enabled: id > 0 });
-export const useNews = (query?: string) => useQuery({ queryKey: ['news', query], queryFn: () => getNews(query) });
+export const useNews = (request?: string | NewsQuery, enabled = true) => useQuery({ queryKey: ['news', request], queryFn: () => getNews(request), enabled, staleTime: 10 * 60 * 1000, retry: 0, retryOnMount: false });

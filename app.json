@@ -5,6 +5,12 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/branding/my-liga-mx-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B0F14",
+      "imageWidth": 240
+    },
     "userInterfaceStyle": "automatic",
     "scheme": "myligamx",
     "plugins": ["expo-router"],
@@ -13,7 +19,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0B0F14",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
