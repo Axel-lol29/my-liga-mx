@@ -30,7 +30,7 @@ export default function LoginScreen(): React.JSX.Element {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen>
+      <Screen maxContentWidth={520}>
         <View style={authStyles.content}>
           <View style={authStyles.brand}>
             <AppLogo variant="medium" showWordmark />
@@ -46,7 +46,7 @@ export default function LoginScreen(): React.JSX.Element {
             <View style={styles.authLink}>
               <AppText color={colors.muted}>¿Aún no tienes cuenta? </AppText>
               <Link href="/(auth)/register" asChild>
-                <Pressable hitSlop={8}><AppText color={colors.primary} weight="bold">Crear cuenta</AppText></Pressable>
+                <Pressable accessibilityRole="link" hitSlop={8} style={authStyles.linkTarget}><AppText color={colors.primary} weight="bold">Crear cuenta</AppText></Pressable>
               </Link>
             </View>
           </View>
@@ -61,4 +61,5 @@ const authStyles = StyleSheet.create({
   brand: { alignItems: 'center', marginBottom: 22 },
   heading: { gap: 7, marginBottom: 26 },
   form: { gap: 0 },
+  linkTarget: { minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
 });

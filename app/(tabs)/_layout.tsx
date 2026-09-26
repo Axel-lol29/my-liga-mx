@@ -1,12 +1,14 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { ColorValue, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/theme/ThemeProvider';
 
 type TabIconName = 'home' | 'matches' | 'standings' | 'news' | 'profile';
 
 export default function TabsLayout(): React.JSX.Element {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -17,9 +19,9 @@ export default function TabsLayout(): React.JSX.Element {
         tabBarStyle: {
           backgroundColor: colors.background,
           borderTopColor: colors.border,
-          height: 68,
+          height: 68 + insets.bottom,
           paddingTop: 7,
-          paddingBottom: 8,
+          paddingBottom: 8 + insets.bottom,
         },
         tabBarItemStyle: {
           borderRadius: 14,
@@ -121,6 +123,7 @@ function TabIcon({
 }): React.JSX.Element {
   return (
     <View
+      pointerEvents="none"
       style={[
         styles.iconFrame,
         focused && {

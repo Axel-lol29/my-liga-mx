@@ -5,13 +5,12 @@ import { AppLogo } from '../../components/AppLogo';
 import { AppText, PrimaryButton, Screen, StateView, TeamLogo, styles } from '../../components/ui';
 import { LOCAL_LIGA_MX_TEAMS } from '../../src/constants/ligaMxTeams';
 import { useAuth } from '../../src/context/AuthProvider';
-import { updateFavoriteTeam } from '../../src/services/profile/profileService';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { Team } from '../../src/types';
 
 export default function SelectTeamScreen(): React.JSX.Element {
   const { colors } = useTheme();
-  const { session } = useAuth();
+  const { session, updateFavoriteTeam } = useAuth();
   const [selected, setSelected] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -19,7 +18,7 @@ export default function SelectTeamScreen(): React.JSX.Element {
     if (!session || !selected) return;
     setSaving(true);
     try {
-      await updateFavoriteTeam(session.user.id, selected);
+      await updateFavoriteTeam(selected);
       router.replace('/');
     } catch (err) {
       Alert.alert('No pudimos guardar tu selección', err instanceof Error ? err.message : 'Intenta nuevamente.');
@@ -34,7 +33,7 @@ export default function SelectTeamScreen(): React.JSX.Element {
   }
 
   return (
-    <Screen scroll={false}>
+    <Screen scroll={false} maxContentWidth={720}>
       <View style={{ alignItems: 'center', marginBottom: 20 }}>
         <AppLogo variant="small" showWordmark={false} />
         <View style={{ height: 12 }} />
@@ -61,7 +60,7 @@ export default function SelectTeamScreen(): React.JSX.Element {
 function TeamRow({ team, selected, onPress }: { team: Team; selected: boolean; onPress: () => void }): React.JSX.Element {
   const { colors } = useTheme();
   return (
-    <Pressable onPress={onPress} style={[styles.card, { backgroundColor: colors.surface, borderColor: selected ? colors.primary : colors.border, borderWidth: selected ? 2 : 1, flexDirection: 'row', alignItems: 'center', gap: 14 }]}>
+    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.card, { minHeight: 64, backgroundColor: colors.surface, borderColor: selected ? colors.primary : colors.border, borderWidth: selected ? 2 : 1, flexDirection: 'row', alignItems: 'center', gap: 14 }]}>
       <TeamLogo team={team} size={42} />
       <View style={{ flex: 1 }}>
         <AppText weight="bold">{team.name}</AppText>

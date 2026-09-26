@@ -1,8 +1,10 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { View } from 'react-native';
+import { MatchFavoriteButton } from '../../components/MatchFavoriteButton';
 import { AppText, Card, Screen, StateView, TeamLogo } from '../../components/ui';
 import { useSportsDbEventDetail, useSportsDbEventLineup, useSportsDbEventStatistics, useSportsDbEventTimeline } from '../../src/hooks/useData';
+import { useFavoriteMatches, useToggleFavoriteMatch } from '../../src/hooks/useFavoriteMatches';
 import { getMatchStatusLabel } from '../../src/services/sportsDb/presentation';
 import { Fixture, FixtureEvent, MatchLineupPlayer, MatchStatistic, Team } from '../../src/types';
 import { useTheme } from '../../src/theme/ThemeProvider';
@@ -16,6 +18,8 @@ export default function MatchDetailScreen(): React.JSX.Element {
   const eventId = Array.isArray(params.id) ? params.id[0] ?? '' : params.id ?? '';
   console.log('MATCH DETAIL PARAM:', eventId);
   const detail = useSportsDbEventDetail(eventId);
+  const favoriteMatches = useFavoriteMatches();
+  const toggleFavorite = useToggleFavoriteMatch();
   const optionalDataEnabled = Boolean(detail.data && detail.data.status !== 'scheduled');
   const timeline = useSportsDbEventTimeline(eventId, optionalDataEnabled);
   const statistics = useSportsDbEventStatistics(eventId, optionalDataEnabled);
@@ -25,6 +29,7 @@ export default function MatchDetailScreen(): React.JSX.Element {
   if (detail.isError || !detail.data) return <Screen><StateView kind="error" message={detail.error instanceof Error ? detail.error.message : 'Partido no encontrado.'} onRetry={() => void detail.refetch()} /></Screen>;
 
   const match = detail.data;
+  const isFavorite = Boolean(match.idEvent && favoriteMatches.data?.some((favorite) => favorite.eventId === match.idEvent));
   const dateLabel = match.date ? new Date(match.date).toLocaleString('es-MX') : 'Fecha no disponible';
   const statusLabel = getMatchStatusLabel(match);
   const homeLineup = lineup.data?.filter((player) => belongsToTeam(player, match.homeTeam, true)) ?? [];
@@ -36,7 +41,10 @@ export default function MatchDetailScreen(): React.JSX.Element {
 
   return <Screen refreshing={detail.isRefetching} onRefresh={() => { void detail.refetch(); void timeline.refetch(); void statistics.refetch(); void lineup.refetch(); }}>
     <Stack.Screen options={{ headerShown: true, title: 'Detalle de partido', headerBackTitle: 'Atrás' }} />
-    <AppText size={13} color={colors.muted}>{match.round ?? 'Liga MX'} · {match.venue ?? 'Estadio no disponible'}</AppText>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <AppText size={13} color={colors.muted} style={{ flex: 1 }}>{match.round ?? 'Liga MX'} · {match.venue ?? 'Estadio no disponible'}</AppText>
+      {match.idEvent ? <MatchFavoriteButton isFavorite={isFavorite} pending={toggleFavorite.isPending} disabled={favoriteMatches.isLoading || favoriteMatches.isError} onPress={() => toggleFavorite.mutate({ fixture: match, shouldSave: !isFavorite })} /> : null}
+    </View>
     <AppText size={12} color={match.status === 'live' ? colors.danger : colors.muted} weight="bold" style={{ marginTop: 5 }}>{statusLabel} · {dateLabel}</AppText>
     <Card style={{ marginTop: 14 }}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><View style={{ alignItems: 'center', flex: 1, gap: 8 }}><TeamLogo team={match.homeTeam} size={64} /><AppText weight="bold" style={{ textAlign: 'center' }}>{match.homeTeam.name}</AppText></View><View style={{ alignItems: 'center' }}><AppText size={30} weight="bold">{match.homeGoals ?? '-'} - {match.awayGoals ?? '-'}</AppText><AppText size={11} color={match.status === 'live' ? colors.danger : colors.muted}>{statusLabel}</AppText></View><View style={{ alignItems: 'center', flex: 1, gap: 8 }}><TeamLogo team={match.awayTeam} size={64} /><AppText weight="bold" style={{ textAlign: 'center' }}>{match.awayTeam.name}</AppText></View></View></Card>
     {optionalDataEnabled && timeline.isLoading ? <><AppText size={21} weight="bold">Eventos</AppText><StateView kind="loading" /></> : null}

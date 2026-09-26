@@ -82,7 +82,7 @@ function ArticleCard({ article, onPress }: { article: NewsArticle; onPress: () =
   const [imageFailed, setImageFailed] = useState(false);
   const showImage = Boolean(article.image && !imageFailed);
 
-  return <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.84 : 1 })}>
+  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.84 : 1 })}>
     <Card style={styles.articleCard}>
       <View style={[styles.articleImage, { backgroundColor: colors.surface }]}>
         {showImage
@@ -141,7 +141,7 @@ function formatPublishedAt(value: string): string {
 const styles = StyleSheet.create({
   segment: { flexDirection: 'row', padding: 4, borderWidth: 1, borderRadius: 14, marginTop: 18, marginBottom: 16, gap: 4 },
   staleNotice: { marginBottom: 9 },
-  segmentButton: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingHorizontal: 8 },
+  segmentButton: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingHorizontal: 8 },
   articleCard: { padding: 0, overflow: 'hidden', marginBottom: 14, borderRadius: 18 },
   articleImage: { width: '100%', height: 168, alignItems: 'center', justifyContent: 'center' },
   imagePlaceholder: { alignItems: 'center', gap: 4 },

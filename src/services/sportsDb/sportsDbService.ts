@@ -1,7 +1,7 @@
-import { getTeams } from '../apiFootball/teamsService';
 import { footballRequest } from '../apiFootball/apiFootballClient';
+import { getTeamByAlias, getTeamBySportsDbId, toAppTeam } from '../../constants/ligaMxTeams';
 import { Fixture, FixtureEvent, MatchLineupPlayer, MatchStatistic, Standing, Team } from '../../types';
-import { getSportsDbTeamId, normalizeTeamName, SPORTS_DB_LEAGUE_ID, SPORTS_DB_SEASON } from './config';
+import { getSportsDbTeamId, SPORTS_DB_LEAGUE_ID, SPORTS_DB_SEASON } from './config';
 import { translateAndSortStatistics, translatePlayerPosition } from './presentation';
 import { SportsDbEvent, SportsDbEventDetailResponse, SportsDbEventStat, SportsDbEventStatsResponse, SportsDbFixturesResponse, SportsDbLineupResponse, SportsDbNextFixtureResponse, SportsDbStandingsResponse, SportsDbTimelineEvent, SportsDbTimelineResponse } from './types';
 
@@ -50,16 +50,16 @@ export function mapSportsDbFixture(event: SportsDbEvent): Fixture {
   };
 }
 
-function mergeAppTeam(sportsTeam: { id: string; name: string; badge: string | null }, appTeams: Team[]): Team {
-  const match = appTeams.find((team) => getSportsDbTeamId(team) === sportsTeam.id) ?? appTeams.find((team) => normalizeTeamName(team.name) === normalizeTeamName(sportsTeam.name));
-  return match ? { ...match, logo: match.logo ?? sportsTeam.badge } : { id: Number(sportsTeam.id), name: sportsTeam.name, code: null, logo: sportsTeam.badge, country: 'México', founded: null, venue: null, city: null };
+function mergeCatalogTeam(sportsTeam: { id: string; name: string; badge: string | null }): Team {
+  const match = getTeamBySportsDbId(sportsTeam.id) ?? getTeamByAlias(sportsTeam.name);
+  return match
+    ? { ...toAppTeam(match), logo: match.badge ?? sportsTeam.badge }
+    : { id: Number(sportsTeam.id), name: sportsTeam.name, code: null, logo: sportsTeam.badge, country: 'México', founded: null, venue: null, city: null };
 }
 
 export async function getSportsDbStandings(): Promise<Standing[]> {
   const response = await footballRequest<SportsDbStandingsResponse>({ action: 'standings', params: { leagueId: SPORTS_DB_LEAGUE_ID, season: SPORTS_DB_SEASON } });
-  let appTeams: Team[] = [];
-  try { appTeams = await getTeams(); } catch { appTeams = []; }
-  return (response.data ?? []).map((row) => ({ rank: row.rank, team: mergeAppTeam(row.team, appTeams), played: row.played, wins: row.wins, draws: row.draws, losses: row.losses, goalsFor: row.goalsFor, goalsAgainst: row.goalsAgainst, goalDifference: row.goalDifference, points: row.points, form: row.form }));
+  return (response.data ?? []).map((row) => ({ rank: row.rank, team: mergeCatalogTeam(row.team), played: row.played, wins: row.wins, draws: row.draws, losses: row.losses, goalsFor: row.goalsFor, goalsAgainst: row.goalsAgainst, goalDifference: row.goalDifference, points: row.points, form: row.form }));
 }
 
 export async function getSportsDbFixtures(): Promise<Fixture[]> {

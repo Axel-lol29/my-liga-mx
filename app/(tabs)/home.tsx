@@ -5,7 +5,7 @@ import { AppLogo } from '../../components/AppLogo';
 import { AppText, Card, MatchCard, NewsCard, Screen, SectionHeader, StateView, TeamLogo } from '../../components/ui';
 import { getTeamByInternalId, toAppTeam } from '../../src/constants/ligaMxTeams';
 import { useAuth } from '../../src/context/AuthProvider';
-import { useFixtures, useNews, useNextFixture, useStandings } from '../../src/hooks/useData';
+import { useNews, useNextFixture, useStandings, useSportsDbFixtures } from '../../src/hooks/useData';
 import { useTheme } from '../../src/theme/ThemeProvider';
 
 export default function HomeScreen(): React.JSX.Element {
@@ -15,12 +15,17 @@ export default function HomeScreen(): React.JSX.Element {
   const favoriteEntry = getTeamByInternalId(favoriteId);
   const favoriteTeam = favoriteEntry ? toAppTeam(favoriteEntry) : null;
   const nextFixtureQuery = useNextFixture(favoriteTeam);
-  const fixturesQuery = useFixtures({ teamId: favoriteId });
+  const fixturesQuery = useSportsDbFixtures();
   const standingsQuery = useStandings();
   const newsQuery = useNews(favoriteTeam?.name ? `${favoriteTeam.name} Liga MX` : undefined);
   const fixtures = fixturesQuery.data ?? [];
   const upcoming = nextFixtureQuery.data ?? null;
-  const latest = [...fixtures].reverse().find((item) => item.status === 'finished');
+  const latest = favoriteEntry
+    ? fixtures
+      .filter((item) => item.status === 'finished'
+        && (item.homeTeam.id === Number(favoriteEntry.sportsDbId) || item.awayTeam.id === Number(favoriteEntry.sportsDbId)))
+      .sort((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0))[0] ?? null
+    : null;
 
   useEffect(() => {
     console.log('LOCAL FAVORITE TEAM', {
@@ -45,7 +50,7 @@ export default function HomeScreen(): React.JSX.Element {
           <View style={homeStyles.brand}><AppLogo variant="compact" showWordmark={false} /><AppText size={12} color={colors.primaryLight} weight="bold" style={homeStyles.brandText}>MY LIGA MX</AppText></View>
           <AppText size={30} weight="bold">Hola, {profile?.name?.split(' ')[0] ?? 'aficionado'}</AppText>
         </View>
-        <View style={[homeStyles.liveDot, { backgroundColor: colors.primary }]} />
+        <View pointerEvents="none" style={[homeStyles.liveDot, { backgroundColor: colors.primary }]} />
       </View>
       <AppText color={colors.muted}>Tu resumen de fútbol mexicano.</AppText>
       <SectionHeader title="Tu equipo" action="Cambiar" onPress={() => router.push('/(auth)/select-team')} />

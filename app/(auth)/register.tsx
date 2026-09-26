@@ -44,7 +44,7 @@ export default function RegisterScreen(): React.JSX.Element {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen>
+      <Screen maxContentWidth={520}>
         <View style={authStyles.content}>
           <View style={authStyles.brand}>
             <AppLogo variant="medium" showWordmark />
@@ -61,7 +61,7 @@ export default function RegisterScreen(): React.JSX.Element {
             <PrimaryButton title="Crear cuenta" onPress={() => void submit()} loading={loading} />
             <View style={styles.authLink}>
               <AppText color={colors.muted}>¿Ya tienes cuenta? </AppText>
-              <Pressable onPress={() => router.replace('/(auth)/login')}>
+              <Pressable accessibilityRole="link" hitSlop={8} style={authStyles.linkTarget} onPress={() => router.replace('/(auth)/login')}>
                 <AppText color={colors.primary} weight="bold">Iniciar sesión</AppText>
               </Pressable>
             </View>
@@ -77,4 +77,5 @@ const authStyles = StyleSheet.create({
   brand: { alignItems: 'center', marginBottom: 18 },
   heading: { gap: 6, marginBottom: 20 },
   form: { gap: 0 },
+  linkTarget: { minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
 });

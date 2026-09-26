@@ -8,7 +8,6 @@ const FIXTURES_CACHE_TTL = 20 * 60 * 1000;
 const ROUND_CACHE_TTL = 30 * 60 * 1000;
 const EVENT_DATA_CACHE_TTL = 15 * 60 * 1000;
 
-const allowedResources = new Set(['teams', 'fixtures', 'standings', 'fixtures/events', 'fixtures/statistics']);
 const finalStatuses = new Set(['FT', 'AET', 'PEN', 'FINISHED', 'MATCH FINISHED']);
 const ignoredStatuses = new Set(['NS', 'TBD', 'PST', 'POSTPONED', 'CANC', 'CANCELLED', 'ABD', 'ABANDONED']);
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
@@ -80,5 +79,30 @@ async function getNextFixture(teamId: string): Promise<{ data: SportsDbEvent | n
 async function getEventDetail(eventId: string): Promise<{ data: SportsDbEvent | null }> { const key = `event-detail:${eventId}`; const cached = getCached<{ data: SportsDbEvent | null }>(key); if (cached) return cached; const payload = await fetchSportsDb<{ events?: SportsDbEvent[] | null }>('lookupevent.php', { id: eventId }); return setCached(key, { data: Array.isArray(payload.events) ? payload.events[0] ?? null : null }, EVENT_DATA_CACHE_TTL); }
 async function getEventCollection(eventId: string, path: string, field: string): Promise<{ data: unknown[] }> { const key = `${path}:${eventId}`; const cached = getCached<{ data: unknown[] }>(key); if (cached) return cached; const payload = await fetchSportsDb<Record<string, unknown>>(path, { id: eventId }); const value = payload[field]; const data = Array.isArray(value) ? value : []; return setCached(key, { data }, EVENT_DATA_CACHE_TTL); }
 
-interface FootballProxyRequest { action?: 'standings' | 'fixtures' | 'next-fixture' | 'event-detail' | 'event-timeline' | 'event-stats' | 'event-lineup'; teamId?: string | number; eventId?: string | number; resource?: string; params?: Record<string, string | number>; }
-Deno.serve(async (request) => { if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders }); try { const body = await request.json() as FootballProxyRequest; console.log('football-proxy request:', { action: body.action ?? null, teamId: body.teamId ?? null, eventId: body.eventId ?? null, season: body.params?.season ?? LIGA_MX_SEASON }); if (body.action === 'standings') return json(await getStandings()); if (body.action === 'fixtures') return json(await getFixtures()); if (body.action === 'next-fixture') { const teamId = String(body.teamId ?? '').trim(); if (!/^\d+$/.test(teamId)) return json({ error: 'TheSportsDB teamId inválido.' }, 400); return json(await getNextFixture(teamId)); } if (body.action === 'event-detail' || body.action === 'event-timeline' || body.action === 'event-stats' || body.action === 'event-lineup') { const eventId = String(body.eventId ?? '').trim(); if (!/^\d+$/.test(eventId)) return json({ error: 'TheSportsDB eventId inválido.' }, 400); if (body.action === 'event-detail') return json(await getEventDetail(eventId)); if (body.action === 'event-timeline') return json(await getEventCollection(eventId, 'lookuptimeline.php', 'timeline')); if (body.action === 'event-stats') return json(await getEventCollection(eventId, 'lookupeventstats.php', 'eventstats')); return json(await getEventCollection(eventId, 'lookuplineup.php', 'lineup')); } if (!body.resource || !allowedResources.has(body.resource)) return json({ error: 'Recurso no permitido' }, 400); const apiKey = Deno.env.get('API_FOOTBALL_KEY'); if (!apiKey) return json({ error: 'API_FOOTBALL_KEY no configurada' }, 503); const query = new URLSearchParams(); for (const [key, value] of Object.entries(body.params ?? {})) query.set(key, String(value)); const response = await fetch(`https://v3.football.api-sports.io/${body.resource}?${query.toString()}`, { headers: { 'x-apisports-key': apiKey } }); const text = await response.text(); return new Response(text, { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }); } catch (error) { console.error('football-proxy internal error:', error); return json({ error: error instanceof Error ? error.message : 'Solicitud inválida' }, 502); } });
+interface FootballProxyRequest { action?: 'standings' | 'fixtures' | 'next-fixture' | 'event-detail' | 'event-timeline' | 'event-stats' | 'event-lineup'; teamId?: string | number; eventId?: string | number; params?: Record<string, string | number>; }
+Deno.serve(async (request) => {
+  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  try {
+    const body = await request.json() as FootballProxyRequest;
+    console.log('football-proxy request:', { action: body.action ?? null, teamId: body.teamId ?? null, eventId: body.eventId ?? null, season: body.params?.season ?? LIGA_MX_SEASON });
+    if (body.action === 'standings') return json(await getStandings());
+    if (body.action === 'fixtures') return json(await getFixtures());
+    if (body.action === 'next-fixture') {
+      const teamId = String(body.teamId ?? '').trim();
+      if (!/^\d+$/.test(teamId)) return json({ error: 'TheSportsDB teamId inválido.' }, 400);
+      return json(await getNextFixture(teamId));
+    }
+    if (body.action === 'event-detail' || body.action === 'event-timeline' || body.action === 'event-stats' || body.action === 'event-lineup') {
+      const eventId = String(body.eventId ?? '').trim();
+      if (!/^\d+$/.test(eventId)) return json({ error: 'TheSportsDB eventId inválido.' }, 400);
+      if (body.action === 'event-detail') return json(await getEventDetail(eventId));
+      if (body.action === 'event-timeline') return json(await getEventCollection(eventId, 'lookuptimeline.php', 'timeline'));
+      if (body.action === 'event-stats') return json(await getEventCollection(eventId, 'lookupeventstats.php', 'eventstats'));
+      return json(await getEventCollection(eventId, 'lookuplineup.php', 'lineup'));
+    }
+    return json({ error: 'Acción no permitida.' }, 400);
+  } catch (error) {
+    console.error('football-proxy internal error:', error);
+    return json({ error: error instanceof Error ? error.message : 'Solicitud inválida' }, 502);
+  }
+});
