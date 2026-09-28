@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthProvider';
 import { addFavoriteMatch, FavoriteMatch, getFavoriteMatches, removeFavoriteMatch } from '../services/favorites/favoriteMatchesService';
 import { Fixture } from '../types';
+import { localMatchDateTimeParts } from '../utils/matchDateTime';
 
 const favoriteMatchesKey = (userId?: string) => ['favorite-matches', userId] as const;
 
@@ -55,7 +56,7 @@ export function useToggleFavoriteMatch() {
       queryClient.setQueryData<FavoriteMatch[]>(queryKey, (current = []) => {
         if (shouldSave) {
           if (current.some((match) => match.eventId === eventId)) return current;
-          const [eventDate = '', eventTime = ''] = fixture.date.split('T');
+          const { date: eventDate, time: eventTime } = localMatchDateTimeParts(fixture.timestamp, fixture.date);
           const now = new Date().toISOString();
           return [{
             id: `pending-${eventId}`,
@@ -65,8 +66,8 @@ export function useToggleFavoriteMatch() {
             awayTeamName: fixture.awayTeam.name,
             homeTeamBadge: fixture.homeTeam.logo,
             awayTeamBadge: fixture.awayTeam.logo,
-            eventDate: eventDate || null,
-            eventTime: eventTime || null,
+            eventDate,
+            eventTime,
             status: fixture.statusShort || fixture.status,
             homeScore: fixture.homeGoals,
             awayScore: fixture.awayGoals,

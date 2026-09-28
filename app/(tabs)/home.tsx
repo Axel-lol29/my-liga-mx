@@ -6,11 +6,14 @@ import { AppText, Card, MatchCard, NewsCard, Screen, SectionHeader, StateView, T
 import { getTeamByInternalId, toAppTeam } from '../../src/constants/ligaMxTeams';
 import { useAuth } from '../../src/context/AuthProvider';
 import { useNews, useNextFixture, useStandings, useSportsDbFixtures } from '../../src/hooks/useData';
+import { useSavedNews } from '../../src/hooks/useSavedNews';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { NewsSaveButton } from '../../components/NewsSaveButton';
 
 export default function HomeScreen(): React.JSX.Element {
   const { colors } = useTheme();
   const { profile } = useAuth();
+  const savedNews = useSavedNews();
   const favoriteId = profile?.favoriteTeamId ?? 0;
   const favoriteEntry = getTeamByInternalId(favoriteId);
   const favoriteTeam = favoriteEntry ? toAppTeam(favoriteEntry) : null;
@@ -71,7 +74,20 @@ export default function HomeScreen(): React.JSX.Element {
       {latest ? <><SectionHeader title="Último resultado" /><MatchCard fixture={latest} onPress={() => router.push(`/match/${latest.id}`)} /></> : null}
       <SectionHeader title="Tabla rápida" action="Ver tabla" onPress={() => router.push('/(tabs)/standings')} />
       {standingsQuery.isLoading ? <StateView kind="loading" /> : standingsQuery.data?.length ? <Card style={{ backgroundColor: colors.surfaceElevated }}>{standingsQuery.data.slice(0, 4).map((row) => <View key={row.team.id} style={[homeStyles.tableRow, { borderBottomColor: colors.border }]}><AppText style={homeStyles.rank} weight="bold" color={row.team.id === favoriteId ? colors.primary : colors.muted}>{row.rank}</AppText><TeamLogo team={row.team} size={25} /><AppText style={homeStyles.teamName} weight={row.team.id === favoriteId ? 'bold' : 'medium'}>{row.team.name}</AppText><AppText weight="bold" color={row.team.id === favoriteId ? colors.primary : undefined}>{row.points} <AppText size={11} color={colors.muted}>PTS</AppText></AppText></View>)}</Card> : <StateView kind="empty" message="No hay tabla disponible." />}
-      {newsQuery.data?.length ? <><SectionHeader title="Noticias para ti" action="Ver todas" onPress={() => router.push('/(tabs)/news')} />{newsQuery.data.slice(0, 3).map((article) => <NewsCard key={article.id} article={article} onPress={() => router.push(`/news/${encodeURIComponent(article.id)}`)} />)}</> : null}
+      {newsQuery.data?.length ? <><SectionHeader title="Noticias para ti" action="Ver todas" onPress={() => router.push('/(tabs)/news')} />{newsQuery.data.slice(0, 3).map((article) => {
+        const isSaved = savedNews.isSaved(article.url);
+        return <NewsCard
+          key={article.id}
+          article={article}
+          onPress={() => router.push(`/news/${encodeURIComponent(article.id)}`)}
+          saveControl={<NewsSaveButton
+            isSaved={isSaved}
+            pending={savedNews.toggleMutation.isPending && savedNews.toggleMutation.variables?.article.url === article.url}
+            disabled={!savedNews.canSave || savedNews.isLoading || savedNews.isError}
+            onPress={() => savedNews.toggleMutation.mutate({ article, shouldSave: !isSaved })}
+          />}
+        />;
+      })}</> : null}
     </Screen>
   );
 }

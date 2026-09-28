@@ -1,6 +1,7 @@
 export type ThemePreference = 'light' | 'dark' | 'system';
+export type MatchReminderMinutes = 15 | 30 | 60;
 export interface UserProfile { id: string; name: string; favoriteTeamId: number | null; createdAt: string; updatedAt: string; }
-export interface UserPreferences { id: string; userId: string; theme: ThemePreference; notificationsEnabled: boolean; matchStartNotifications: boolean; matchResultNotifications: boolean; }
+export interface UserPreferences { id: string; userId: string; theme: ThemePreference; notificationsEnabled: boolean; matchStartNotifications: boolean; matchResultNotifications: boolean; matchReminderMinutes: MatchReminderMinutes; }
 export interface Team { id: number; name: string; code: string | null; logo: string | null; country: string | null; founded: number | null; venue: string | null; city: string | null; }
 export type MatchStatus = 'scheduled' | 'live' | 'finished' | 'postponed' | 'cancelled' | 'unknown';
 export interface Fixture { id: number; idEvent?: string | null; date: string; timestamp: number | null; status: MatchStatus; statusShort: string; elapsed: number | null; venue: string | null; homeTeam: Team; awayTeam: Team; homeGoals: number | null; awayGoals: number | null; round: string | null; }

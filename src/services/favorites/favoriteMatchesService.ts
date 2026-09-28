@@ -1,5 +1,6 @@
 import { supabase, getSupabaseConfigError } from '../../lib/supabase';
 import { Fixture } from '../../types';
+import { localMatchDateTimeParts } from '../../utils/matchDateTime';
 
 export interface FavoriteMatch {
   id: string;
@@ -55,8 +56,7 @@ function fixtureSnapshot(userId: string, fixture: Fixture): Omit<FavoriteMatchRo
   const eventId = fixture.idEvent?.trim();
   if (!eventId) throw new Error('Este partido no tiene un idEvent válido.');
 
-  const [eventDate = '', rawEventTime = ''] = fixture.date.split('T');
-  const eventTime = rawEventTime.match(/^\d{2}:\d{2}(?::\d{2})?/)?.[0] ?? '';
+  const { date: eventDate, time: eventTime } = localMatchDateTimeParts(fixture.timestamp, fixture.date);
   return {
     user_id: userId,
     event_id: eventId,
@@ -64,8 +64,8 @@ function fixtureSnapshot(userId: string, fixture: Fixture): Omit<FavoriteMatchRo
     away_team_name: fixture.awayTeam.name,
     home_team_badge: fixture.homeTeam.logo,
     away_team_badge: fixture.awayTeam.logo,
-    event_date: eventDate || null,
-    event_time: eventTime || null,
+    event_date: eventDate,
+    event_time: eventTime,
     status: fixture.statusShort || fixture.status,
     home_score: fixture.homeGoals,
     away_score: fixture.awayGoals,

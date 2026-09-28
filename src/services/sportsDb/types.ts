@@ -11,6 +11,7 @@ export interface SportsDbEvent {
   dateEventLocal: string | null;
   strTime: string | null;
   strTimeLocal: string | null;
+  strTimestamp?: string | number | null;
   strVenue: string | null;
   strStatus: string | null;
   strSeason?: string | null;

@@ -1,12 +1,16 @@
 import { router } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { MatchFavoriteButton } from '../../components/MatchFavoriteButton';
+import { MatchReminderButton } from '../../components/MatchReminderButton';
 import { AppText, MatchCard, Screen, StateView } from '../../components/ui';
 import { useFavoriteMatches, useToggleFavoriteMatch } from '../../src/hooks/useFavoriteMatches';
+import { useManualMatchReminders } from '../../src/hooks/useManualMatchReminders';
 import { useSportsDbFixtures } from '../../src/hooks/useData';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { Fixture } from '../../src/types';
+import { canSetMatchReminder } from '../../src/services/notifications/notificationService';
+import { formatCompactMatchDateTime } from '../../src/utils/matchDateTime';
 
 type Filter = 'all' | 'live' | 'scheduled' | 'finished';
 
@@ -17,11 +21,17 @@ export default function MatchesScreen(): React.JSX.Element {
   const query = useSportsDbFixtures();
   const favorites = useFavoriteMatches();
   const toggleFavorite = useToggleFavoriteMatch();
+  const reminders = useManualMatchReminders();
   const allFixtures = query.data ?? [];
   const favoriteIds = new Set((favorites.data ?? []).map((match) => match.eventId));
-  const rounds = useMemo(() => availableRounds(allFixtures), [allFixtures]);
-  const effectiveRound = filter === 'live' ? null : selectedRound;
-  const fixtures = useMemo(() => sortFixtures(allFixtures, filter, effectiveRound), [allFixtures, effectiveRound, filter]);
+  const statusFixtures = useMemo(() => filterFixturesByStatus(allFixtures, filter), [allFixtures, filter]);
+  const rounds = useMemo(() => availableRounds(statusFixtures), [statusFixtures]);
+  const effectiveRound = filter === 'live' || selectedRound === null || !rounds.includes(selectedRound) ? null : selectedRound;
+  const fixtures = useMemo(() => sortFixtures(statusFixtures, filter, effectiveRound), [effectiveRound, filter, statusFixtures]);
+
+  useEffect(() => {
+    if (filter !== 'live' && selectedRound !== null && !rounds.includes(selectedRound)) setSelectedRound(null);
+  }, [filter, rounds, selectedRound]);
 
   return <Screen refreshing={query.isRefetching} onRefresh={() => void query.refetch()}>
     <AppText size={12} color={colors.primary} weight="bold">MY LIGA MX · JORNADA</AppText>
@@ -32,9 +42,14 @@ export default function MatchesScreen(): React.JSX.Element {
       {(['all', 'live', 'scheduled', 'finished'] as Filter[]).map((value) => <FilterChip key={value} value={value} active={filter === value} onPress={() => setFilter(value)} />)}
     </View>
 
-    {filter !== 'live' ? <>
+    {filter !== 'live' && rounds.length > 0 ? <>
       <AppText size={13} weight="bold" color={colors.muted} style={{ marginBottom: 6 }}>Jornada</AppText>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4, paddingRight: 4 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ height: 48, flexGrow: 0, flexShrink: 0 }}
+        contentContainerStyle={{ alignItems: 'center', gap: 8, paddingVertical: 2, paddingRight: 4 }}
+      >
         <RoundChip label="Todas" active={selectedRound === null} onPress={() => setSelectedRound(null)} />
         {rounds.map((round) => <RoundChip key={round} label={`J${round}`} active={selectedRound === round} onPress={() => setSelectedRound(round)} />)}
       </ScrollView>
@@ -49,9 +64,12 @@ export default function MatchesScreen(): React.JSX.Element {
             ? fixtures.map((fixture) => {
               const eventId = fixture.idEvent?.trim();
               const isFavorite = Boolean(eventId && favoriteIds.has(eventId));
+              const hasReminder = Boolean(eventId && reminders.eventIds.includes(eventId));
+              const canRemind = canSetMatchReminder(fixture);
               return <MatchCard
                 key={fixture.id}
                 fixture={fixture}
+                dateTimeLabel={formatCompactMatchDateTime(fixture.timestamp, fixture.date) ?? 'Fecha no disponible'}
                 onPress={() => {
                   if (!eventId) return;
                   console.log('MATCH PRESS:', { id: fixture.id, rawIdEvent: fixture.idEvent, home: fixture.homeTeam, away: fixture.awayTeam });
@@ -64,9 +82,18 @@ export default function MatchesScreen(): React.JSX.Element {
                   disabled={favorites.isLoading || favorites.isError}
                   onPress={() => toggleFavorite.mutate({ fixture, shouldSave: !isFavorite })}
                 /> : undefined}
+                reminderControl={canRemind && eventId ? <MatchReminderButton
+                  isEnabled={hasReminder}
+                  pending={reminders.isUpdating && reminders.updatingEventId === eventId}
+                  disabled={reminders.isLoading || reminders.isError}
+                  onPress={() => {
+                    if (!canSetMatchReminder(fixture)) return;
+                    reminders.setReminder({ eventId, enabled: !hasReminder });
+                  }}
+                /> : undefined}
               />;
             })
-            : <StateView kind="empty" message={effectiveRound === null ? 'No hay partidos disponibles para este filtro.' : 'No hay partidos para esta jornada y filtro.'} />}
+            : <StateView kind="empty" message={emptyMessage(filter, effectiveRound)} />}
     </View>
   </Screen>;
 }
@@ -80,6 +107,18 @@ function availableRounds(fixtures: Fixture[]): number[] {
   return [...rounds].sort((left, right) => left - right);
 }
 
+function filterFixturesByStatus(fixtures: Fixture[], filter: Filter): Fixture[] {
+  return filter === 'all' ? fixtures : fixtures.filter((fixture) => fixture.status === filter);
+}
+
+function emptyMessage(filter: Filter, selectedRound: number | null): string {
+  if (selectedRound !== null) return 'No hay partidos para esta jornada y filtro.';
+  if (filter === 'scheduled') return 'No hay próximos partidos disponibles.';
+  if (filter === 'finished') return 'No hay partidos finalizados disponibles.';
+  if (filter === 'live') return 'No hay partidos en vivo disponibles.';
+  return 'No hay partidos disponibles para este filtro.';
+}
+
 function getRoundNumber(fixture: Fixture): number | null {
   const value = fixture.round?.trim();
   if (!value) return null;
@@ -90,14 +129,12 @@ function getRoundNumber(fixture: Fixture): number | null {
 }
 
 function sortFixtures(fixtures: Fixture[], filter: Filter, selectedRound: number | null): Fixture[] {
-  const filtered = fixtures.filter((fixture) => {
-    const matchesStatus = filter === 'all' || fixture.status === filter;
-    const matchesRound = selectedRound === null || getRoundNumber(fixture) === selectedRound;
-    return matchesStatus && matchesRound;
-  });
+  const filtered = selectedRound === null ? fixtures : fixtures.filter((fixture) => getRoundNumber(fixture) === selectedRound);
   return [...filtered].sort((left, right) => {
-    const leftTime = left.timestamp ?? 0;
-    const rightTime = right.timestamp ?? 0;
+    const leftTime = left.timestamp;
+    const rightTime = right.timestamp;
+    if (leftTime === null) return rightTime === null ? 0 : 1;
+    if (rightTime === null) return -1;
     return filter === 'finished' ? rightTime - leftTime : leftTime - rightTime;
   });
 }
@@ -112,7 +149,7 @@ function FilterChip({ value, active, onPress }: { value: Filter; active: boolean
 
 function RoundChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }): React.JSX.Element {
   const { colors } = useTheme();
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} onPress={onPress} style={{ minHeight: 40, minWidth: 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 13, borderRadius: 20, backgroundColor: active ? colors.primary : colors.surface, borderWidth: 1, borderColor: active ? colors.primary : colors.border }}>
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} onPress={onPress} style={{ height: 44, minHeight: 44, minWidth: 48, flexGrow: 0, flexShrink: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, borderRadius: 20, backgroundColor: active ? colors.primary : colors.surface, borderWidth: 1, borderColor: active ? colors.primary : colors.border }}>
     <AppText size={12} weight="bold" color={active ? '#FFF' : colors.muted}>{label}</AppText>
   </Pressable>;
 }

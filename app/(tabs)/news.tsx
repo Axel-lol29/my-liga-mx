@@ -1,17 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { AppText, Card, Screen, StateView } from '../../components/ui';
+import { NewsArticleCard } from '../../components/NewsArticleCard';
+import { NewsSaveButton } from '../../components/NewsSaveButton';
 import { useAuth } from '../../src/context/AuthProvider';
 import { getTeamByInternalId, LigaMxTeam } from '../../src/constants/ligaMxTeams';
 import { useNews } from '../../src/hooks/useData';
 import { NewsArticle } from '../../src/types';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { useSavedNews } from '../../src/hooks/useSavedNews';
 
 type NewsMode = 'team' | 'league';
 
 export default function NewsScreen(): React.JSX.Element {
   const { colors } = useTheme();
-  const { profile, loading: authLoading } = useAuth();
+  const { profile, loading: authLoading, session } = useAuth();
+  const savedNews = useSavedNews();
   const favoriteTeam = getTeamByInternalId(profile?.favoriteTeamId);
   const [manualMode, setManualMode] = useState<NewsMode | null>(null);
   const mode: NewsMode = manualMode ?? (favoriteTeam ? 'team' : 'league');
@@ -60,7 +64,20 @@ export default function NewsScreen(): React.JSX.Element {
             ? <StateView kind="empty" message="No encontramos noticias recientes." />
             : <>
               {showingPreviousArticles ? <AppText size={12} color={colors.muted} style={styles.staleNotice}>No se pudieron actualizar; se conservan las noticias anteriores.</AppText> : null}
-              {visibleArticles.map((article) => <ArticleCard key={article.id} article={article} onPress={() => void openArticle(article.url)} />)}
+              {visibleArticles.map((article) => {
+                const isSaved = savedNews.isSaved(article.url);
+                return <NewsArticleCard
+                  key={article.id}
+                  article={article}
+                  onPress={() => void openArticle(article.url)}
+                  saveControl={<NewsSaveButton
+                    isSaved={isSaved}
+                    pending={savedNews.toggleMutation.isPending && savedNews.toggleMutation.variables?.article.url === article.url}
+                    disabled={!session || savedNews.isLoading || savedNews.isError}
+                    onPress={() => savedNews.toggleMutation.mutate({ article, shouldSave: !isSaved })}
+                  />}
+                />;
+              })}
             </>}
   </Screen>;
 }
@@ -74,27 +91,6 @@ function SegmentButton({ label, active, onPress }: { label: string; active: bool
     style={[styles.segmentButton, active ? { backgroundColor: colors.primary } : null]}
   >
     <AppText size={13} weight="bold" color={active ? '#FFFFFF' : colors.muted}>{label}</AppText>
-  </Pressable>;
-}
-
-function ArticleCard({ article, onPress }: { article: NewsArticle; onPress: () => void }): React.JSX.Element {
-  const { colors } = useTheme();
-  const [imageFailed, setImageFailed] = useState(false);
-  const showImage = Boolean(article.image && !imageFailed);
-
-  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.84 : 1 })}>
-    <Card style={styles.articleCard}>
-      <View style={[styles.articleImage, { backgroundColor: colors.surface }]}>
-        {showImage
-          ? <Image source={{ uri: article.image as string }} style={StyleSheet.absoluteFill} resizeMode="cover" onError={() => setImageFailed(true)} />
-          : <View style={styles.imagePlaceholder}><AppText size={20} weight="bold" color={colors.primary}>MX</AppText><AppText size={11} color={colors.muted}>My Liga MX</AppText></View>}
-      </View>
-      <View style={styles.articleCopy}>
-        <AppText size={17} weight="bold">{article.title}</AppText>
-        <AppText size={12} color={colors.muted}>{article.sourceName} · {formatPublishedAt(article.publishedAt)}</AppText>
-        {article.description ? <Text numberOfLines={3} style={{ color: colors.muted, fontSize: 13 }}>{article.description}</Text> : null}
-      </View>
-    </Card>
   </Pressable>;
 }
 
@@ -123,29 +119,10 @@ function newsAliases(team: LigaMxTeam): string[] {
   return [...new Set([team.canonicalName, ...team.aliases, ...(extraAliases[team.canonicalName.toLocaleLowerCase('es-MX')] ?? [])])];
 }
 
-function formatPublishedAt(value: string): string {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return 'Fecha no disponible';
-  const elapsed = Math.max(0, Date.now() - timestamp);
-  const minutes = Math.floor(elapsed / 60_000);
-  if (elapsed < 60 * 60_000) return `Hace ${Math.max(1, minutes)} min`;
-  const hours = Math.floor(elapsed / (60 * 60_000));
-  if (elapsed < 24 * 60 * 60_000) return `Hace ${hours} h`;
-  const publishedDay = new Date(timestamp);
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (publishedDay.toDateString() === yesterday.toDateString()) return 'Ayer';
-  return new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }).format(publishedDay);
-}
-
 const styles = StyleSheet.create({
   segment: { flexDirection: 'row', padding: 4, borderWidth: 1, borderRadius: 14, marginTop: 18, marginBottom: 16, gap: 4 },
   staleNotice: { marginBottom: 9 },
   segmentButton: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingHorizontal: 8 },
-  articleCard: { padding: 0, overflow: 'hidden', marginBottom: 14, borderRadius: 18 },
-  articleImage: { width: '100%', height: 168, alignItems: 'center', justifyContent: 'center' },
-  imagePlaceholder: { alignItems: 'center', gap: 4 },
-  articleCopy: { padding: 14, gap: 7 },
   skeletonCard: { padding: 0, overflow: 'hidden', marginBottom: 14 },
   skeletonImage: { height: 168, width: '100%' },
   skeletonCopy: { padding: 14, gap: 10 },

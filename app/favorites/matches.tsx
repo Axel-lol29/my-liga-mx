@@ -5,7 +5,9 @@ import { AppText, MatchCard, Screen, SectionHeader, StateView } from '../../comp
 import { MatchFavoriteButton } from '../../components/MatchFavoriteButton';
 import { useAuth } from '../../src/context/AuthProvider';
 import { useFavoriteMatches, useToggleFavoriteMatch } from '../../src/hooks/useFavoriteMatches';
+import { useSportsDbFixtures } from '../../src/hooks/useData';
 import { FavoriteMatch } from '../../src/services/favorites/favoriteMatchesService';
+import { parseSavedMatchDateTime, formatMatchTime } from '../../src/utils/matchDateTime';
 import { Fixture, MatchStatus, Team } from '../../src/types';
 import { useTheme } from '../../src/theme/ThemeProvider';
 
@@ -14,6 +16,7 @@ export default function FavoriteMatchesScreen(): React.JSX.Element {
   const { colors } = useTheme();
   const favorites = useFavoriteMatches();
   const toggleFavorite = useToggleFavoriteMatch();
+  const cachedFixtures = useSportsDbFixtures(false);
   const groups = useMemo(() => groupMatches(favorites.data ?? []), [favorites.data]);
 
   if (!session) return <Screen><BackButton /><AppText size={30} weight="bold">MIS PARTIDOS</AppText><StateView kind="error" message="Inicia sesión para consultar tus partidos guardados." /></Screen>;
@@ -23,11 +26,12 @@ export default function FavoriteMatchesScreen(): React.JSX.Element {
   const renderGroup = (title: string, matches: FavoriteMatch[]): React.ReactNode => matches.length ? <React.Fragment key={title}>
     <SectionHeader title={title} />
     {matches.map((favorite) => {
-      const fixture = favoriteToFixture(favorite);
+      const freshFixture = cachedFixtures.data?.find((item) => item.idEvent === favorite.eventId);
+      const fixture = freshFixture ?? favoriteToFixture(favorite);
       return <MatchCard
         key={favorite.eventId}
         fixture={fixture}
-        dateTimeLabel={formatMatchDate(favorite)}
+        dateTimeLabel={formatMatchDate(favorite, freshFixture)}
         onPress={() => router.push({ pathname: '/match/[id]', params: { id: favorite.eventId } })}
         favoriteControl={<MatchFavoriteButton compact isFavorite pending={toggleFavorite.isPending && toggleFavorite.variables?.fixture.idEvent === favorite.eventId} onPress={() => toggleFavorite.mutate({ fixture, shouldSave: false })} />}
       />;
@@ -76,7 +80,7 @@ function groupMatches(matches: FavoriteMatch[]): { live: FavoriteMatch[]; upcomi
     else if (['1H', 'HT', '2H', '3H', 'ET', 'LIVE', 'IN PLAY', 'IN PROGRESS'].includes(status)) live.push(match);
     else upcoming.push(match);
   }
-  const dateValue = (match: FavoriteMatch): number => Date.parse(`${match.eventDate ?? ''}T${match.eventTime ?? '00:00:00'}`) || 0;
+  const dateValue = (match: FavoriteMatch): number => parseSavedMatchDateTime(match.eventDate, match.eventTime) ?? 0;
   upcoming.sort((left, right) => dateValue(left) - dateValue(right));
   live.sort((left, right) => dateValue(left) - dateValue(right));
   finished.sort((left, right) => dateValue(right) - dateValue(left));
@@ -101,7 +105,7 @@ function favoriteToFixture(favorite: FavoriteMatch): Fixture {
     id: Number(favorite.eventId) || 0,
     idEvent: favorite.eventId,
     date,
-    timestamp: date ? Date.parse(date) || null : null,
+    timestamp: parseSavedMatchDateTime(favorite.eventDate, favorite.eventTime),
     status,
     statusShort,
     elapsed: null,
@@ -114,11 +118,11 @@ function favoriteToFixture(favorite: FavoriteMatch): Fixture {
   };
 }
 
-function formatMatchDate(favorite: FavoriteMatch): string {
+function formatMatchDate(favorite: FavoriteMatch, freshFixture?: Fixture): string {
   if (!favorite.eventDate) return 'Fecha no disponible';
-  const timestamp = Date.parse(`${favorite.eventDate}${favorite.eventTime ? `T${favorite.eventTime}` : ''}`);
-  if (!Number.isFinite(timestamp)) return favorite.eventDate;
+  const timestamp = freshFixture?.timestamp ?? parseSavedMatchDateTime(favorite.eventDate, favorite.eventTime);
+  if (timestamp === null) return favorite.eventDate;
   const date = new Date(timestamp).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
-  const time = favorite.eventTime ? new Date(timestamp).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : null;
+  const time = freshFixture ? formatMatchTime(timestamp, freshFixture.date) : favorite.eventTime ? formatMatchTime(timestamp) : null;
   return time ? `${date} · ${time}` : date;
 }

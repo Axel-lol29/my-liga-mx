@@ -4,16 +4,11 @@ import { Fixture, FixtureEvent, MatchLineupPlayer, MatchStatistic, Standing, Tea
 import { getSportsDbTeamId, SPORTS_DB_LEAGUE_ID, SPORTS_DB_SEASON } from './config';
 import { translateAndSortStatistics, translatePlayerPosition } from './presentation';
 import { SportsDbEvent, SportsDbEventDetailResponse, SportsDbEventStat, SportsDbEventStatsResponse, SportsDbFixturesResponse, SportsDbLineupResponse, SportsDbNextFixtureResponse, SportsDbStandingsResponse, SportsDbTimelineEvent, SportsDbTimelineResponse } from './types';
+import { parseSportsDbEventDate } from '../../utils/matchDateTime';
 
 function numberValue(value: string | number | null | undefined): number | null {
   const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
-}
-
-function dateValue(event: SportsDbEvent): string {
-  const date = event.dateEventLocal ?? event.dateEvent ?? '';
-  const time = event.strTimeLocal ?? event.strTime;
-  return date && time ? `${date}T${time}` : date;
 }
 
 function statusValue(event: SportsDbEvent): Fixture['status'] {
@@ -32,12 +27,12 @@ function teamFromEvent(id: string | number | null, name: string | null, badge: s
 export function mapSportsDbFixture(event: SportsDbEvent): Fixture {
   const homeGoals = numberValue(event.intHomeScore);
   const awayGoals = numberValue(event.intAwayScore);
-  const date = dateValue(event);
+  const eventDate = parseSportsDbEventDate(event);
   return {
     id: Number(event.idEvent ?? 0),
     idEvent: event.idEvent,
-    date,
-    timestamp: date ? Date.parse(date) : null,
+    date: eventDate.date,
+    timestamp: eventDate.timestamp,
     status: statusValue(event),
     statusShort: event.strStatus ?? 'NS',
     elapsed: null,

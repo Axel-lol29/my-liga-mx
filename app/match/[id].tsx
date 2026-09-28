@@ -2,12 +2,16 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { View } from 'react-native';
 import { MatchFavoriteButton } from '../../components/MatchFavoriteButton';
+import { MatchReminderButton } from '../../components/MatchReminderButton';
 import { AppText, Card, Screen, StateView, TeamLogo } from '../../components/ui';
 import { useSportsDbEventDetail, useSportsDbEventLineup, useSportsDbEventStatistics, useSportsDbEventTimeline } from '../../src/hooks/useData';
 import { useFavoriteMatches, useToggleFavoriteMatch } from '../../src/hooks/useFavoriteMatches';
+import { useManualMatchReminders } from '../../src/hooks/useManualMatchReminders';
+import { canSetMatchReminder } from '../../src/services/notifications/notificationService';
 import { getMatchStatusLabel } from '../../src/services/sportsDb/presentation';
 import { Fixture, FixtureEvent, MatchLineupPlayer, MatchStatistic, Team } from '../../src/types';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { formatMatchDateTime } from '../../src/utils/matchDateTime';
 
 const eventIcon: Record<FixtureEvent['type'], string> = { goal: '⚽', yellow_card: '🟨', red_card: '🟥', substitution: '🔄', var: '▣', unknown: '•' };
 const eventLabel: Record<FixtureEvent['type'], string> = { goal: 'GOL', yellow_card: 'TARJETA AMARILLA', red_card: 'TARJETA ROJA', substitution: 'CAMBIO', var: 'VAR', unknown: 'EVENTO' };
@@ -20,6 +24,7 @@ export default function MatchDetailScreen(): React.JSX.Element {
   const detail = useSportsDbEventDetail(eventId);
   const favoriteMatches = useFavoriteMatches();
   const toggleFavorite = useToggleFavoriteMatch();
+  const reminders = useManualMatchReminders();
   const optionalDataEnabled = Boolean(detail.data && detail.data.status !== 'scheduled');
   const timeline = useSportsDbEventTimeline(eventId, optionalDataEnabled);
   const statistics = useSportsDbEventStatistics(eventId, optionalDataEnabled);
@@ -30,7 +35,8 @@ export default function MatchDetailScreen(): React.JSX.Element {
 
   const match = detail.data;
   const isFavorite = Boolean(match.idEvent && favoriteMatches.data?.some((favorite) => favorite.eventId === match.idEvent));
-  const dateLabel = match.date ? new Date(match.date).toLocaleString('es-MX') : 'Fecha no disponible';
+  const hasReminder = Boolean(match.idEvent && reminders.eventIds.includes(match.idEvent));
+  const dateLabel = formatMatchDateTime(match.timestamp, match.date) ?? 'Fecha no disponible';
   const statusLabel = getMatchStatusLabel(match);
   const homeLineup = lineup.data?.filter((player) => belongsToTeam(player, match.homeTeam, true)) ?? [];
   const awayLineup = lineup.data?.filter((player) => belongsToTeam(player, match.awayTeam, false)) ?? [];
@@ -43,7 +49,18 @@ export default function MatchDetailScreen(): React.JSX.Element {
     <Stack.Screen options={{ headerShown: true, title: 'Detalle de partido', headerBackTitle: 'Atrás' }} />
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
       <AppText size={13} color={colors.muted} style={{ flex: 1 }}>{match.round ?? 'Liga MX'} · {match.venue ?? 'Estadio no disponible'}</AppText>
-      {match.idEvent ? <MatchFavoriteButton isFavorite={isFavorite} pending={toggleFavorite.isPending} disabled={favoriteMatches.isLoading || favoriteMatches.isError} onPress={() => toggleFavorite.mutate({ fixture: match, shouldSave: !isFavorite })} /> : null}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        {match.idEvent && canSetMatchReminder(match) ? <MatchReminderButton
+          isEnabled={hasReminder}
+          pending={reminders.isUpdating && reminders.updatingEventId === match.idEvent}
+          disabled={reminders.isLoading || reminders.isError}
+          onPress={() => {
+            if (!canSetMatchReminder(match)) return;
+            reminders.setReminder({ eventId: match.idEvent as string, enabled: !hasReminder });
+          }}
+        /> : null}
+        {match.idEvent ? <MatchFavoriteButton isFavorite={isFavorite} pending={toggleFavorite.isPending} disabled={favoriteMatches.isLoading || favoriteMatches.isError} onPress={() => toggleFavorite.mutate({ fixture: match, shouldSave: !isFavorite })} /> : null}
+      </View>
     </View>
     <AppText size={12} color={match.status === 'live' ? colors.danger : colors.muted} weight="bold" style={{ marginTop: 5 }}>{statusLabel} · {dateLabel}</AppText>
     <Card style={{ marginTop: 14 }}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><View style={{ alignItems: 'center', flex: 1, gap: 8 }}><TeamLogo team={match.homeTeam} size={64} /><AppText weight="bold" style={{ textAlign: 'center' }}>{match.homeTeam.name}</AppText></View><View style={{ alignItems: 'center' }}><AppText size={30} weight="bold">{match.homeGoals ?? '-'} - {match.awayGoals ?? '-'}</AppText><AppText size={11} color={match.status === 'live' ? colors.danger : colors.muted}>{statusLabel}</AppText></View><View style={{ alignItems: 'center', flex: 1, gap: 8 }}><TeamLogo team={match.awayTeam} size={64} /><AppText weight="bold" style={{ textAlign: 'center' }}>{match.awayTeam.name}</AppText></View></View></Card>

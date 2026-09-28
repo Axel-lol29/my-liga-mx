@@ -10,7 +10,8 @@ import { updatePreferences } from '../../src/services/profile/profileService';
 import { useNotificationPreferences } from '../../src/hooks/useNotificationPreferences';
 import { getMatchNotificationPermission, NotificationPermissionState, requestMatchNotificationPermission } from '../../src/services/notifications/notificationService';
 import { useTheme } from '../../src/theme/ThemeProvider';
-import { ThemePreference } from '../../src/types';
+import { MatchReminderMinutes, ThemePreference } from '../../src/types';
+import { BookmarkGlyph } from '../../components/NewsSaveButton';
 
 export default function ProfileScreen(): React.JSX.Element {
   const { colors, preference, setPreference } = useTheme();
@@ -41,6 +42,7 @@ export default function ProfileScreen(): React.JSX.Element {
   const notificationsAvailable = permissionState === 'granted' || permissionState === 'unsupported';
   const notificationsEnabled = preferences?.notificationsEnabled === true && notificationsAvailable;
   const matchStartNotifications = preferences?.matchStartNotifications === true;
+  const matchReminderMinutes: MatchReminderMinutes = preferences?.matchReminderMinutes ?? 60;
 
   const toggleNotifications = async (): Promise<void> => {
     setPermissionMessage(null);
@@ -161,6 +163,19 @@ export default function ProfileScreen(): React.JSX.Element {
         <AppText size={26} color={colors.mutedSubtle} style={profileStyles.chevron}>›</AppText>
       </Pressable>
 
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => router.push('/favorites/news')}
+        style={({ pressed }) => [profileStyles.savedMatchesLink, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.82 : 1 }]}
+      >
+        <BookmarkGlyph color={colors.primaryLight} cutoutColor={colors.surface} />
+        <View style={profileStyles.changeTeamCopy}>
+          <AppText size={15} weight="bold">Noticias guardadas</AppText>
+          <AppText size={13} color={colors.muted}>Consulta tus artículos guardados.</AppText>
+        </View>
+        <AppText size={26} color={colors.mutedSubtle} style={profileStyles.chevron}>›</AppText>
+      </Pressable>
+
       <View style={profileStyles.sectionHeading}>
         <AppText size={12} color={colors.primaryLight} weight="bold" style={profileStyles.sectionLabel}>PREFERENCIAS</AppText>
       </View>
@@ -203,6 +218,40 @@ export default function ProfileScreen(): React.JSX.Element {
           disabled={!notificationsEnabled || notificationPreferenceBusy}
           onChange={() => void toggleMatchStartNotifications()}
         />
+        <View style={profileStyles.reminderSelector}>
+          <AppText size={13} color={colors.muted} weight="medium">Recordarme antes del inicio</AppText>
+          <View style={[
+            profileStyles.reminderSegments,
+            { backgroundColor: colors.surface, borderColor: colors.borderSubtle, opacity: notificationsEnabled && matchStartNotifications ? 1 : 0.48 },
+          ]}>
+            {([15, 30, 60] as MatchReminderMinutes[]).map((minutes) => {
+              const selected = minutes === matchReminderMinutes;
+              const disabled = !notificationsEnabled || !matchStartNotifications || notificationPreferenceBusy;
+              return (
+                <Pressable
+                  key={minutes}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected, disabled }}
+                  disabled={disabled}
+                  onPress={() => {
+                    setPermissionMessage(null);
+                    void updateNotificationPreferences({ matchReminderMinutes: minutes }).catch(() => {
+                      setPermissionMessage('No pudimos guardar este cambio. Intenta nuevamente.');
+                    });
+                  }}
+                  style={({ pressed }) => [
+                    profileStyles.reminderSegment,
+                    { backgroundColor: selected ? colors.primary : 'transparent', opacity: pressed ? 0.82 : 1 },
+                  ]}
+                >
+                  <AppText size={12} color={selected ? '#FFFFFF' : colors.muted} weight={selected ? 'bold' : 'medium'}>
+                    {minutes === 60 ? '1 h' : `${minutes} min`}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
         {permissionMessage ? <AppText size={12} color={colors.muted} style={profileStyles.permissionMessage}>{permissionMessage}</AppText> : null}
         {permissionState === 'unsupported' ? <AppText size={12} color={colors.muted} style={profileStyles.permissionMessage}>Los recordatorios locales están disponibles en Android y iOS.</AppText> : null}
         {permissionState === 'denied' && !permissionMessage ? <AppText size={12} color={colors.muted} style={profileStyles.permissionMessage}>Las notificaciones están desactivadas en el sistema.</AppText> : null}
@@ -257,6 +306,9 @@ const profileStyles = StyleSheet.create({
   segment: { flex: 1, minHeight: 44, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   divider: { height: 1, marginVertical: 5 },
   preferenceRow: { minHeight: 52, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingVertical: 11 },
+  reminderSelector: { marginTop: 8, gap: 9 },
+  reminderSegments: { flexDirection: 'row', borderWidth: 1, borderRadius: 12, padding: 4, gap: 4 },
+  reminderSegment: { flex: 1, minHeight: 40, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   permissionMessage: { marginTop: 6, lineHeight: 18 },
   logoutButton: { marginTop: 30, marginBottom: 18 },
 });

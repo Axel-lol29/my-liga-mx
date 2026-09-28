@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthProvider';
 import { getPreferences, updatePreferences as persistPreferences } from '../services/profile/profileService';
 import { UserPreferences } from '../types';
 
-type NotificationPreferenceChanges = Partial<Pick<UserPreferences, 'notificationsEnabled' | 'matchStartNotifications'>>;
+type NotificationPreferenceChanges = Partial<Pick<UserPreferences, 'notificationsEnabled' | 'matchStartNotifications' | 'matchReminderMinutes'>>;
 const preferencesKey = (userId?: string) => ['user-preferences', userId] as const;
 
 export function useNotificationPreferences() {

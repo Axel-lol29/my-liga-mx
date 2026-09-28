@@ -2,13 +2,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { LigaMxTeam } from '../../constants/ligaMxTeams';
-import { FavoriteMatch } from '../favorites/favoriteMatchesService';
-import { Fixture } from '../../types';
+import { Fixture, MatchReminderMinutes } from '../../types';
+import { formatMatchTime } from '../../utils/matchDateTime';
 
 const STORAGE_KEY = '@my-liga-mx/match-notifications';
+const MANUAL_REMINDERS_KEY = '@my-liga-mx/manual-match-reminders';
 const CHANNEL_ID = 'match-reminders';
-const REMINDER_TYPE = 'one-hour';
-const REMINDER_BEFORE_MS = 60 * 60 * 1000;
+const REMINDER_TYPE = 'match-start';
 
 export type NotificationPermissionState = 'granted' | 'denied' | 'undetermined' | 'unsupported';
 
@@ -18,6 +18,7 @@ interface StoredMatchNotification {
   notificationId: string;
   userId: string;
   startsAt: number;
+  reminderMinutes: MatchReminderMinutes;
   title: string;
   body: string;
 }
@@ -26,6 +27,7 @@ interface DesiredMatchNotification {
   eventId: string;
   userId: string;
   startsAt: number;
+  reminderMinutes: MatchReminderMinutes;
   title: string;
   body: string;
 }
@@ -91,17 +93,32 @@ function readStoredNotifications(): Promise<StoredMatchNotification[]> {
     try {
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
-      return parsed.filter((item): item is StoredMatchNotification => {
-        if (!item || typeof item !== 'object') return false;
-        const record = item as Partial<StoredMatchNotification>;
-        return typeof record.eventId === 'string'
-          && record.reminderType === REMINDER_TYPE
-          && typeof record.notificationId === 'string'
-          && typeof record.userId === 'string'
-          && typeof record.startsAt === 'number'
-          && typeof record.title === 'string'
-          && typeof record.body === 'string';
+      const validItems: StoredMatchNotification[] = [];
+      parsed.forEach((item) => {
+        if (!item || typeof item !== 'object') return;
+        const record = item as Record<string, unknown>;
+        const reminderType = record.reminderType;
+        const reminderMinutes = record.reminderMinutes;
+        if (typeof record.eventId !== 'string'
+          || (reminderType !== REMINDER_TYPE && reminderType !== 'one-hour')
+          || typeof record.notificationId !== 'string'
+          || typeof record.userId !== 'string'
+          || typeof record.startsAt !== 'number'
+          || typeof record.title !== 'string'
+          || typeof record.body !== 'string'
+          || (reminderMinutes !== undefined && reminderMinutes !== 15 && reminderMinutes !== 30 && reminderMinutes !== 60)) return;
+        validItems.push({
+          eventId: record.eventId,
+          reminderType: REMINDER_TYPE,
+          notificationId: record.notificationId,
+          userId: record.userId,
+          startsAt: record.startsAt,
+          reminderMinutes: reminderMinutes === 15 || reminderMinutes === 30 || reminderMinutes === 60 ? reminderMinutes : 60,
+          title: record.title,
+          body: record.body,
+        });
       });
+      return validItems;
     } catch {
       return [];
     }
@@ -109,16 +126,7 @@ function readStoredNotifications(): Promise<StoredMatchNotification[]> {
 }
 
 function eventTimestamp(fixture: Fixture): number | null {
-  const timestamp = typeof fixture.timestamp === 'number' && Number.isFinite(fixture.timestamp)
-    ? fixture.timestamp
-    : Date.parse(fixture.date);
-  return Number.isFinite(timestamp) ? timestamp : null;
-}
-
-function savedMatchTimestamp(match: FavoriteMatch): number | null {
-  if (!match.eventDate) return null;
-  const dateTime = match.eventTime ? `${match.eventDate}T${match.eventTime}` : match.eventDate;
-  const timestamp = Date.parse(dateTime);
+  const timestamp = typeof fixture.timestamp === 'number' && Number.isFinite(fixture.timestamp) ? fixture.timestamp : Date.parse(fixture.date);
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
@@ -131,23 +139,66 @@ function isUpcomingStatus(status: string | null | undefined): boolean {
     || normalized === 'tbd';
 }
 
+export function canSetMatchReminder(fixture: Fixture | null | undefined): boolean {
+  if (!fixture || fixture.status !== 'scheduled' || !fixture.idEvent?.trim()) return false;
+  if (!isUpcomingStatus(fixture.statusShort)) return false;
+  const startsAt = eventTimestamp(fixture);
+  return startsAt !== null && startsAt > Date.now();
+}
+
+function manualReminderStorageKey(userId: string): string {
+  return `${MANUAL_REMINDERS_KEY}:${userId}`;
+}
+
+export async function getManualMatchReminderIds(userId: string): Promise<string[]> {
+  const raw = await AsyncStorage.getItem(manualReminderStorageKey(userId));
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0))];
+  } catch {
+    return [];
+  }
+}
+
+export function setManualMatchReminder(userId: string, eventId: string, enabled: boolean): Promise<void> {
+  return serialize(async () => {
+    const normalizedEventId = eventId.trim();
+    if (!normalizedEventId) throw new Error('El partido no tiene un idEvent válido.');
+    const current = await getManualMatchReminderIds(userId);
+    const next = enabled
+      ? [...new Set([...current, normalizedEventId])]
+      : current.filter((id) => id !== normalizedEventId);
+    const key = manualReminderStorageKey(userId);
+    if (next.length) await AsyncStorage.setItem(key, JSON.stringify(next));
+    else await AsyncStorage.removeItem(key);
+  });
+}
+
 function formatLocalTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
+  return formatMatchTime(timestamp) ?? 'Hora no disponible';
+}
+
+function reminderDurationLabel(minutes: MatchReminderMinutes): string {
+  return minutes === 60 ? '1 hora' : `${minutes} minutos`;
 }
 
 function desiredNotifications(
   userId: string,
   favoriteTeam: LigaMxTeam | null,
   fixtures: Fixture[],
-  favoriteMatches: FavoriteMatch[],
+  manualReminderEventIds: string[],
+  reminderMinutes: MatchReminderMinutes,
 ): DesiredMatchNotification[] {
   const now = Date.now();
   const byEvent = new Map<string, DesiredMatchNotification>();
   const fixtureByEvent = new Map(fixtures.flatMap((fixture) => fixture.idEvent ? [[fixture.idEvent, fixture] as const] : []));
+  const reminderBeforeMs = reminderMinutes * 60 * 1000;
 
   const add = (item: DesiredMatchNotification): void => {
-    if (!item.eventId || item.startsAt - REMINDER_BEFORE_MS <= now) return;
-    byEvent.set(item.eventId, item);
+    if (!item.eventId || item.startsAt - reminderBeforeMs <= now) return;
+    if (!byEvent.has(item.eventId)) byEvent.set(item.eventId, item);
   };
 
   if (favoriteTeam) {
@@ -164,28 +215,25 @@ function desiredNotifications(
         eventId: fixture.idEvent,
         userId,
         startsAt,
-        title: `${favoriteTeam.displayName} juega en 1 hora`,
+        reminderMinutes,
+        title: `${favoriteTeam.displayName} juega en ${reminderDurationLabel(reminderMinutes)}`,
         body: `${fixture.homeTeam.name} vs ${fixture.awayTeam.name} · ${formatLocalTime(startsAt)}`,
       });
     });
   }
 
-  favoriteMatches.forEach((match) => {
-    const freshFixture = fixtureByEvent.get(match.eventId);
-    const freshStatus = freshFixture?.statusShort ?? match.status;
-    if (freshFixture && freshFixture.status !== 'scheduled') return;
-    if (!isUpcomingStatus(freshStatus)) return;
-
-    const startsAt = freshFixture ? eventTimestamp(freshFixture) : savedMatchTimestamp(match);
+  manualReminderEventIds.forEach((eventId) => {
+    const fixture = fixtureByEvent.get(eventId);
+    if (!fixture || !canSetMatchReminder(fixture)) return;
+    const startsAt = eventTimestamp(fixture);
     if (startsAt === null) return;
-    const home = freshFixture?.homeTeam.name ?? match.homeTeamName;
-    const away = freshFixture?.awayTeam.name ?? match.awayTeamName;
     add({
-      eventId: match.eventId,
+      eventId,
       userId,
       startsAt,
-      title: 'Tu partido guardado está por comenzar',
-      body: `${home} vs ${away} · ${formatLocalTime(startsAt)}`,
+      reminderMinutes,
+      title: `Tu partido está por comenzar`,
+      body: `${fixture.homeTeam.name} vs ${fixture.awayTeam.name} · ${formatLocalTime(startsAt)}`,
     });
   });
 
@@ -230,7 +278,8 @@ export function syncMatchNotifications(
   userId: string,
   favoriteTeam: LigaMxTeam | null,
   fixtures: Fixture[],
-  favoriteMatches: FavoriteMatch[],
+  manualReminderEventIds: string[],
+  reminderMinutes: MatchReminderMinutes = 60,
 ): Promise<void> {
   return serialize(async () => {
     if (!isNative()) return;
@@ -250,7 +299,7 @@ export function syncMatchNotifications(
     }
 
     const now = Date.now();
-    const desired = desiredNotifications(userId, favoriteTeam, fixtures, favoriteMatches);
+    const desired = desiredNotifications(userId, favoriteTeam, fixtures, manualReminderEventIds, reminderMinutes);
     const desiredByEvent = new Map(desired.map((item) => [item.eventId, item]));
     const stored = await readStoredNotifications();
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
@@ -262,10 +311,11 @@ export function syncMatchNotifications(
       const stillScheduled = scheduledIds.has(entry.notificationId);
       const stillRelevant = target
         && entry.userId === userId
+        && entry.reminderMinutes === target.reminderMinutes
         && Math.abs(target.startsAt - entry.startsAt) < 60_000
         && target.title === entry.title
         && target.body === entry.body
-        && entry.startsAt - REMINDER_BEFORE_MS > now
+        && entry.startsAt - target.reminderMinutes * 60 * 1000 > now
         && stillScheduled;
       if (stillRelevant) {
         retained.push(entry);
@@ -276,7 +326,7 @@ export function syncMatchNotifications(
     }
 
     for (const target of desiredByEvent.values()) {
-      const reminderAt = target.startsAt - REMINDER_BEFORE_MS;
+      const reminderAt = target.startsAt - target.reminderMinutes * 60 * 1000;
       if (reminderAt <= now) continue;
       try {
         const notificationId = await Notifications.scheduleNotificationAsync({
