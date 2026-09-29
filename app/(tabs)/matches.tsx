@@ -1,9 +1,9 @@
 import { router } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { MatchFavoriteButton } from '../../components/MatchFavoriteButton';
 import { MatchReminderButton } from '../../components/MatchReminderButton';
-import { AppText, MatchCard, Screen, StateView } from '../../components/ui';
+import { AppText, Card, MatchCard, Screen, StateView } from '../../components/ui';
 import { useFavoriteMatches, useToggleFavoriteMatch } from '../../src/hooks/useFavoriteMatches';
 import { useManualMatchReminders } from '../../src/hooks/useManualMatchReminders';
 import { useSportsDbFixtures } from '../../src/hooks/useData';
@@ -11,6 +11,8 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { Fixture } from '../../src/types';
 import { canSetMatchReminder } from '../../src/services/notifications/notificationService';
 import { formatCompactMatchDateTime } from '../../src/utils/matchDateTime';
+import { RoundSummaryRequest } from '../../src/services/ai/roundSummaryService';
+import { useRoundSummary } from '../../src/hooks/useRoundSummary';
 
 type Filter = 'all' | 'live' | 'scheduled' | 'finished';
 
@@ -28,6 +30,30 @@ export default function MatchesScreen(): React.JSX.Element {
   const rounds = useMemo(() => availableRounds(statusFixtures), [statusFixtures]);
   const effectiveRound = filter === 'live' || selectedRound === null || !rounds.includes(selectedRound) ? null : selectedRound;
   const fixtures = useMemo(() => sortFixtures(statusFixtures, filter, effectiveRound), [effectiveRound, filter, statusFixtures]);
+  const roundFixtures = useMemo(
+    () => effectiveRound === null ? [] : allFixtures.filter((fixture) => getRoundNumber(fixture) === effectiveRound),
+    [allFixtures, effectiveRound],
+  );
+  const finishedRoundFixtures = useMemo(
+    () => roundFixtures.filter((fixture) => fixture.status === 'finished'),
+    [roundFixtures],
+  );
+  const summaryRequest = useMemo<RoundSummaryRequest | undefined>(() => {
+    if (effectiveRound === null || roundFixtures.length === 0 || finishedRoundFixtures.length === 0) return undefined;
+    return {
+      round: effectiveRound,
+      totalMatches: roundFixtures.length,
+      matches: finishedRoundFixtures.map((fixture) => ({
+        homeTeam: fixture.homeTeam.name,
+        awayTeam: fixture.awayTeam.name,
+        homeScore: fixture.homeGoals,
+        awayScore: fixture.awayGoals,
+        status: 'finished',
+      })),
+    };
+  }, [effectiveRound, finishedRoundFixtures, roundFixtures.length]);
+  const roundSummary = useRoundSummary(summaryRequest);
+  const roundIsComplete = roundFixtures.length > 0 && finishedRoundFixtures.length === roundFixtures.length;
 
   useEffect(() => {
     if (filter !== 'live' && selectedRound !== null && !rounds.includes(selectedRound)) setSelectedRound(null);
@@ -54,6 +80,57 @@ export default function MatchesScreen(): React.JSX.Element {
         {rounds.map((round) => <RoundChip key={round} label={`J${round}`} active={selectedRound === round} onPress={() => setSelectedRound(round)} />)}
       </ScrollView>
     </> : null}
+
+    {summaryRequest ? <Card style={{ marginTop: 14, marginBottom: 2, gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <AppText size={17} weight="bold">{roundIsComplete ? 'Resumen de la jornada' : 'Resumen parcial'}</AppText>
+        <AppText size={12} color={colors.muted}>Jornada {summaryRequest.round}</AppText>
+      </View>
+      {!roundIsComplete ? <AppText size={12} color={colors.muted}>
+        Resumen parcial · {finishedRoundFixtures.length} de {roundFixtures.length} partidos finalizados
+      </AppText> : null}
+
+      {roundSummary.summary ? <>
+        <AppText>{roundSummary.summary}</AppText>
+        {roundSummary.highlights.length > 0 ? <View style={{ gap: 6, marginTop: 2 }}>
+          <AppText size={13} weight="bold">Puntos clave</AppText>
+          {roundSummary.highlights.map((highlight, index) => <View key={`${summaryRequest.round}-${index}`} style={{ flexDirection: 'row', gap: 8 }}>
+            <AppText color={colors.primaryLight}>•</AppText>
+            <AppText size={13} color={colors.muted} style={{ flex: 1 }}>{highlight}</AppText>
+          </View>)}
+        </View> : null}
+        <AppText size={11} color={colors.mutedSubtle}>
+          Generado con IA a partir de resultados de la jornada.
+        </AppText>
+        {formatSummaryUpdatedAt(roundSummary.data?.generatedAt) ? <AppText size={11} color={colors.mutedSubtle}>
+          Actualizado {formatSummaryUpdatedAt(roundSummary.data?.generatedAt)}
+        </AppText> : null}
+      </> : <>
+        {roundSummary.data?.pending ? <AppText size={13} color={colors.muted}>
+          El resumen se está generando. Intenta de nuevo en un momento.
+        </AppText> : null}
+        {roundSummary.hasGenerationError ? <AppText size={13} color={colors.danger}>
+          No pudimos generar el resumen en este momento.
+        </AppText> : null}
+        {roundSummary.isError ? <View style={{ gap: 2 }}>
+          <AppText size={13} color={colors.muted}>No pudimos revisar un resumen guardado.</AppText>
+          <Pressable accessibilityRole="button" onPress={() => void roundSummary.refetch()} style={{ minHeight: 40, justifyContent: 'center', alignSelf: 'flex-start' }}>
+            <AppText size={12} color={colors.primaryLight} weight="bold">Reintentar consulta</AppText>
+          </Pressable>
+        </View> : null}
+        <Pressable
+          accessibilityRole="button"
+          disabled={roundSummary.isPendingGeneration || roundSummary.isLoading}
+          onPress={roundSummary.generate}
+          style={({ pressed }) => ({ minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 14, paddingHorizontal: 14, backgroundColor: colors.primary, opacity: roundSummary.isPendingGeneration || roundSummary.isLoading ? 0.65 : pressed ? 0.82 : 1 })}
+        >
+          {roundSummary.isPendingGeneration || roundSummary.isLoading ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
+          <AppText size={14} weight="bold" color="#FFFFFF">
+            {roundSummary.isPendingGeneration ? 'Generando resumen…' : roundSummary.isLoading ? 'Revisando resumen…' : roundSummary.hasGenerationError ? 'Reintentar' : roundSummary.data?.pending ? 'Revisar resumen' : 'Generar resumen'}
+          </AppText>
+        </Pressable>
+      </>}
+    </Card> : null}
 
     <View style={{ marginTop: 14 }}>
       {query.isLoading
@@ -96,6 +173,18 @@ export default function MatchesScreen(): React.JSX.Element {
             : <StateView kind="empty" message={emptyMessage(filter, effectiveRound)} />}
     </View>
   </Screen>;
+}
+
+function formatSummaryUpdatedAt(value?: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat('es-MX', {
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
 }
 
 function availableRounds(fixtures: Fixture[]): number[] {
