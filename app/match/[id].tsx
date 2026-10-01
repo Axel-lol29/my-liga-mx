@@ -1,12 +1,15 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import React from 'react';
-import { View } from 'react-native';
+import React, { useMemo } from 'react';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import { MatchFavoriteButton } from '../../components/MatchFavoriteButton';
 import { MatchReminderButton } from '../../components/MatchReminderButton';
 import { AppText, Card, Screen, StateView, TeamLogo } from '../../components/ui';
-import { useSportsDbEventDetail, useSportsDbEventLineup, useSportsDbEventStatistics, useSportsDbEventTimeline } from '../../src/hooks/useData';
+import { useSportsDbEventDetail, useSportsDbEventLineup, useSportsDbEventStatistics, useSportsDbEventTimeline, useSportsDbFixtures, useStandings } from '../../src/hooks/useData';
 import { useFavoriteMatches, useToggleFavoriteMatch } from '../../src/hooks/useFavoriteMatches';
 import { useManualMatchReminders } from '../../src/hooks/useManualMatchReminders';
+import { useMatchPreview } from '../../src/hooks/useMatchPreview';
+import { getTeamByInternalId, getTeamBySportsDbId } from '../../src/constants/ligaMxTeams';
+import { MatchPreviewRequest, PreviewLastMatch } from '../../src/services/ai/matchPreviewService';
 import { canSetMatchReminder } from '../../src/services/notifications/notificationService';
 import { getMatchStatusLabel } from '../../src/services/sportsDb/presentation';
 import { Fixture, FixtureEvent, MatchLineupPlayer, MatchStatistic, Team } from '../../src/types';
@@ -64,6 +67,7 @@ export default function MatchDetailScreen(): React.JSX.Element {
     </View>
     <AppText size={12} color={match.status === 'live' ? colors.danger : colors.muted} weight="bold" style={{ marginTop: 5 }}>{statusLabel} · {dateLabel}</AppText>
     <Card style={{ marginTop: 14 }}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><View style={{ alignItems: 'center', flex: 1, gap: 8 }}><TeamLogo team={match.homeTeam} size={64} /><AppText weight="bold" style={{ textAlign: 'center' }}>{match.homeTeam.name}</AppText></View><View style={{ alignItems: 'center' }}><AppText size={30} weight="bold">{match.homeGoals ?? '-'} - {match.awayGoals ?? '-'}</AppText><AppText size={11} color={match.status === 'live' ? colors.danger : colors.muted}>{statusLabel}</AppText></View><View style={{ alignItems: 'center', flex: 1, gap: 8 }}><TeamLogo team={match.awayTeam} size={64} /><AppText weight="bold" style={{ textAlign: 'center' }}>{match.awayTeam.name}</AppText></View></View></Card>
+    {isUpcomingMatch(match) ? <MatchPreviewCard match={match} eventId={match.idEvent ?? eventId} /> : null}
     {optionalDataEnabled && timeline.isLoading ? <><AppText size={21} weight="bold">Eventos</AppText><StateView kind="loading" /></> : null}
     {optionalDataEnabled && timeline.data?.length ? <><AppText size={21} weight="bold">Eventos</AppText>{timelineIsPartial ? <AppText size={12} color={colors.muted} style={{ marginTop: 2, marginBottom: 8 }}>Mostrando eventos disponibles</AppText> : null}<Card>{timeline.data.map((event, index) => <EventRow key={eventKey(event, index)} event={event} last={index === timeline.data.length - 1} />)}</Card></> : optionalDataEnabled && !timeline.isLoading ? <><AppText size={21} weight="bold">Eventos</AppText><AppText size={13} color={colors.muted}>Eventos detallados no disponibles.</AppText></> : null}
     {optionalDataEnabled && statistics.isLoading ? <><AppText size={21} weight="bold">Estadísticas</AppText><StateView kind="loading" /></> : null}
@@ -71,6 +75,113 @@ export default function MatchDetailScreen(): React.JSX.Element {
     {optionalDataEnabled && lineup.isLoading ? <><AppText size={21} weight="bold">Alineaciones</AppText><StateView kind="loading" /></> : null}
     {optionalDataEnabled && !lineup.isLoading ? <><AppText size={21} weight="bold">Alineaciones</AppText>{lineup.data?.length ? <>{lineupIsPartial ? <AppText size={12} color={colors.muted} style={{ marginTop: 2, marginBottom: 8 }}>La fuente gratuita no proporciona la alineación completa para este partido.</AppText> : null}{homeLineup.length ? <LineupTeam team={match.homeTeam} players={homeLineup} partial={lineupIsPartial} /> : null}{awayLineup.length ? <LineupTeam team={match.awayTeam} players={awayLineup} partial={lineupIsPartial} /> : null}{unassignedLineup.length ? <LineupGroup title={lineupIsPartial ? 'Jugadores disponibles' : 'Plantilla del partido'} players={unassignedLineup} /> : null}</> : <AppText size={13} color={colors.muted}>Alineaciones no disponibles.</AppText>}</> : null}
   </Screen>;
+}
+
+function MatchPreviewCard({ match, eventId }: { match: Fixture; eventId: string }): React.JSX.Element | null {
+  const { colors } = useTheme();
+  const standingsQuery = useStandings();
+  const fixturesQuery = useSportsDbFixtures();
+  const homeCatalogTeam = getTeamBySportsDbId(match.homeTeam.id);
+  const awayCatalogTeam = getTeamBySportsDbId(match.awayTeam.id);
+  const standings = standingsQuery.data ?? [];
+  const fixtures = fixturesQuery.data ?? [];
+
+  const request = useMemo<MatchPreviewRequest | null>(() => {
+    if (!eventId || !hasUsableTeamNames(match.homeTeam.name, match.awayTeam.name)) return null;
+    const lastMatchFor = (sportsDbId: number): PreviewLastMatch | null => {
+      const latest = fixtures
+        .filter((fixture) => fixture.status === 'finished'
+          && fixture.timestamp !== null
+          && (fixture.homeTeam.id === sportsDbId || fixture.awayTeam.id === sportsDbId)
+          && hasUsableTeamNames(fixture.homeTeam.name, fixture.awayTeam.name)
+          && fixture.homeGoals !== null
+          && fixture.awayGoals !== null)
+        .sort((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0))[0];
+      if (!latest || latest.homeGoals === null || latest.awayGoals === null) return null;
+      return {
+        homeTeam: latest.homeTeam.name,
+        awayTeam: latest.awayTeam.name,
+        homeScore: latest.homeGoals,
+        awayScore: latest.awayGoals,
+        localDateTime: formatMatchDateTime(latest.timestamp, latest.date),
+      };
+    };
+    const standingFor = (teamInternalId: string | undefined) => {
+      if (!teamInternalId) return null;
+      const row = standings.find((item) => item.team.id === Number(teamInternalId));
+      return row ? { position: row.rank, points: row.points, played: row.played } : null;
+    };
+
+    return {
+      match: {
+        eventId,
+        homeTeam: match.homeTeam.name,
+        awayTeam: match.awayTeam.name,
+        localDateTime: formatMatchDateTime(match.timestamp, match.date),
+        venue: match.venue,
+      },
+      homeTeamContext: {
+        standing: standingFor(homeCatalogTeam?.internalId),
+        lastMatch: lastMatchFor(match.homeTeam.id),
+      },
+      awayTeamContext: {
+        standing: standingFor(awayCatalogTeam?.internalId),
+        lastMatch: lastMatchFor(match.awayTeam.id),
+      },
+    };
+  }, [awayCatalogTeam?.internalId, eventId, fixtures, homeCatalogTeam?.internalId, match, standings]);
+
+  const preview = useMatchPreview(request);
+  if (!request) return null;
+
+  const isLoadingInputs = standingsQuery.isFetching || fixturesQuery.isFetching;
+  const hasSummary = Boolean(preview.preview?.summary);
+  return <Card style={{ marginTop: 14, gap: 10 }}>
+    <AppText size={19} weight="bold">Previa IA</AppText>
+    {hasSummary ? <>
+      <AppText>{preview.preview?.summary}</AppText>
+      {preview.preview?.highlights.length ? <View style={{ gap: 6 }}>
+        <AppText size={13} weight="bold">Puntos clave</AppText>
+        {preview.preview.highlights.map((highlight, index) => <View key={`${request.match.eventId}-${index}`} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+          <AppText size={13} color={colors.primaryLight}>•</AppText>
+          <AppText size={13} color={colors.muted} style={{ flex: 1 }}>{highlight}</AppText>
+        </View>)}
+      </View> : null}
+      <AppText size={11} color={colors.muted}>Generado con IA a partir de resultados y tabla disponibles.</AppText>
+      {formatPreviewUpdatedAt(preview.preview?.generatedAt) ? <AppText size={11} color={colors.mutedSubtle}>Actualizado {formatPreviewUpdatedAt(preview.preview?.generatedAt)}</AppText> : null}
+    </> : preview.preview?.pending ? <AppText size={13} color={colors.muted}>La previa se está generando. Puedes volver a consultarla en un momento.</AppText> : preview.hasError ? <AppText size={13} color={colors.danger}>No pudimos generar la previa en este momento.</AppText> : isLoadingInputs ? <AppText size={13} color={colors.muted}>Cargando datos disponibles…</AppText> : <AppText size={13} color={colors.muted}>Obtén contexto rápido de ambos equipos antes del partido.</AppText>}
+    {!hasSummary ? <Pressable
+      accessibilityRole="button"
+      disabled={preview.isGenerating || isLoadingInputs}
+      onPress={() => void preview.generate()}
+      style={({ pressed }) => [{ minHeight: 46, borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, backgroundColor: colors.primary, opacity: preview.isGenerating || isLoadingInputs ? 0.65 : pressed ? 0.82 : 1 }]}
+    >
+      {preview.isGenerating ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
+      <AppText size={14} weight="bold" color="#FFFFFF">
+        {preview.isGenerating ? 'Generando previa…' : preview.hasError ? 'Reintentar' : preview.preview?.pending ? 'Revisar previa' : isLoadingInputs ? 'Cargando datos…' : 'Generar previa'}
+      </AppText>
+    </Pressable> : null}
+  </Card>;
+}
+
+function isUpcomingMatch(match: Fixture): boolean {
+  if (match.status !== 'scheduled') return false;
+  const timestamp = match.timestamp ?? Date.parse(match.date);
+  return Number.isFinite(timestamp) && timestamp > Date.now();
+}
+
+function hasUsableTeamNames(home: string, away: string): boolean {
+  return [home, away].every((name) => {
+    const normalized = name.trim().toLocaleLowerCase('es-MX');
+    return normalized.length > 0 && normalized !== 'equipo sin nombre';
+  });
+}
+
+function formatPreviewUpdatedAt(value?: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(date);
 }
 
 function eventKey(event: FixtureEvent, index: number): string { const stableId = event.id?.trim(); return stableId || `${event.type}-${event.time ?? 'sin-minuto'}-${event.player ?? 'sin-jugador'}-${event.teamId ?? event.team ?? 'sin-equipo'}-${index}`; }
