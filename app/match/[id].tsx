@@ -5,10 +5,12 @@ import { MatchFavoriteButton } from '../../components/MatchFavoriteButton';
 import { MatchReminderButton } from '../../components/MatchReminderButton';
 import { AppText, Card, Screen, StateView, TeamLogo } from '../../components/ui';
 import { useSportsDbEventDetail, useSportsDbEventLineup, useSportsDbEventStatistics, useSportsDbEventTimeline, useSportsDbFixtures, useStandings } from '../../src/hooks/useData';
+import { useMatchRecap } from '../../src/hooks/useMatchRecap';
 import { useFavoriteMatches, useToggleFavoriteMatch } from '../../src/hooks/useFavoriteMatches';
 import { useManualMatchReminders } from '../../src/hooks/useManualMatchReminders';
 import { useMatchPreview } from '../../src/hooks/useMatchPreview';
 import { getTeamByInternalId, getTeamBySportsDbId } from '../../src/constants/ligaMxTeams';
+import { MatchRecapRequest, RecapLineupPlayer, RecapTimelineEvent } from '../../src/services/ai/matchRecapService';
 import { MatchPreviewRequest, PreviewLastMatch } from '../../src/services/ai/matchPreviewService';
 import { canSetMatchReminder } from '../../src/services/notifications/notificationService';
 import { getMatchStatusLabel } from '../../src/services/sportsDb/presentation';
@@ -68,6 +70,14 @@ export default function MatchDetailScreen(): React.JSX.Element {
     <AppText size={12} color={match.status === 'live' ? colors.danger : colors.muted} weight="bold" style={{ marginTop: 5 }}>{statusLabel} · {dateLabel}</AppText>
     <Card style={{ marginTop: 14 }}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><View style={{ alignItems: 'center', flex: 1, gap: 8 }}><TeamLogo team={match.homeTeam} size={64} /><AppText weight="bold" style={{ textAlign: 'center' }}>{match.homeTeam.name}</AppText></View><View style={{ alignItems: 'center' }}><AppText size={30} weight="bold">{match.homeGoals ?? '-'} - {match.awayGoals ?? '-'}</AppText><AppText size={11} color={match.status === 'live' ? colors.danger : colors.muted}>{statusLabel}</AppText></View><View style={{ alignItems: 'center', flex: 1, gap: 8 }}><TeamLogo team={match.awayTeam} size={64} /><AppText weight="bold" style={{ textAlign: 'center' }}>{match.awayTeam.name}</AppText></View></View></Card>
     {isUpcomingMatch(match) ? <MatchPreviewCard match={match} eventId={match.idEvent ?? eventId} /> : null}
+    {hasValidFinalScore(match) ? <MatchRecapCard
+      match={match}
+      eventId={match.idEvent ?? eventId}
+      timeline={timeline.data ?? []}
+      statistics={statistics.data ?? []}
+      lineup={lineup.data ?? []}
+      inputsLoading={timeline.isFetching || statistics.isFetching || lineup.isFetching}
+    /> : null}
     {optionalDataEnabled && timeline.isLoading ? <><AppText size={21} weight="bold">Eventos</AppText><StateView kind="loading" /></> : null}
     {optionalDataEnabled && timeline.data?.length ? <><AppText size={21} weight="bold">Eventos</AppText>{timelineIsPartial ? <AppText size={12} color={colors.muted} style={{ marginTop: 2, marginBottom: 8 }}>Mostrando eventos disponibles</AppText> : null}<Card>{timeline.data.map((event, index) => <EventRow key={eventKey(event, index)} event={event} last={index === timeline.data.length - 1} />)}</Card></> : optionalDataEnabled && !timeline.isLoading ? <><AppText size={21} weight="bold">Eventos</AppText><AppText size={13} color={colors.muted}>Eventos detallados no disponibles.</AppText></> : null}
     {optionalDataEnabled && statistics.isLoading ? <><AppText size={21} weight="bold">Estadísticas</AppText><StateView kind="loading" /></> : null}
@@ -182,6 +192,105 @@ function formatPreviewUpdatedAt(value?: string | null): string | null {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return null;
   return new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(date);
+}
+
+function MatchRecapCard({
+  match,
+  eventId,
+  timeline,
+  statistics,
+  lineup,
+  inputsLoading,
+}: {
+  match: Fixture;
+  eventId: string;
+  timeline: FixtureEvent[];
+  statistics: MatchStatistic[];
+  lineup: MatchLineupPlayer[];
+  inputsLoading: boolean;
+}): React.JSX.Element | null {
+  const { colors } = useTheme();
+  const request = useMemo<MatchRecapRequest | null>(() => {
+    if (!eventId || !hasUsableTeamNames(match.homeTeam.name, match.awayTeam.name)
+      || !hasValidFinalScore(match)) return null;
+    const normalizedTimeline: RecapTimelineEvent[] = timeline.slice(0, 100).map((event) => ({
+      minute: event.time,
+      extraMinute: null,
+      type: event.type,
+      team: event.team ?? null,
+      player: event.player,
+      assist: event.assist,
+      detail: event.description ?? event.detail,
+    }));
+    const normalizedStats = statistics
+      .filter((stat) => stat.label.trim() && (stat.home !== null && stat.home !== '' || stat.away !== null && stat.away !== ''))
+      .slice(0, 24)
+      .map((stat) => ({ name: stat.label, home: stat.home, away: stat.away }));
+    const lineupForSide = (home: boolean): RecapLineupPlayer[] => {
+      const team = home ? match.homeTeam : match.awayTeam;
+      const players = lineup.filter((player) => belongsToTeam(player, team, home));
+      const knownStarters = players.filter((player) => player.substitute === false);
+      const candidates = knownStarters.length ? knownStarters : players;
+      return candidates.slice(0, 11).map((player) => ({
+        name: player.player,
+        position: player.position,
+        number: player.number,
+        role: player.substitute === false ? 'starter' : player.substitute === true ? 'substitute' : null,
+      }));
+    };
+
+    return {
+      match: {
+        eventId,
+        status: 'finished',
+        homeTeam: match.homeTeam.name,
+        awayTeam: match.awayTeam.name,
+        homeScore: match.homeGoals as number,
+        awayScore: match.awayGoals as number,
+        localDateTime: formatMatchDateTime(match.timestamp, match.date),
+        venue: match.venue,
+      },
+      timeline: normalizedTimeline,
+      statistics: normalizedStats,
+      lineups: { home: lineupForSide(true), away: lineupForSide(false) },
+    };
+  }, [eventId, lineup, match, statistics, timeline]);
+  const recap = useMatchRecap(request);
+  if (!request) return null;
+
+  const hasSummary = Boolean(recap.recap?.summary);
+  return <Card style={{ marginTop: 14, gap: 10 }}>
+    <AppText size={19} weight="bold">Resumen IA del partido</AppText>
+    {hasSummary ? <>
+      <AppText>{recap.recap?.summary}</AppText>
+      {recap.recap?.highlights.length ? <View style={{ gap: 6 }}>
+        <AppText size={13} weight="bold">Puntos clave</AppText>
+        {recap.recap.highlights.map((highlight, index) => <View key={`${request.match.eventId}-${index}`} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+          <AppText size={13} color={colors.primaryLight}>•</AppText>
+          <AppText size={13} color={colors.muted} style={{ flex: 1 }}>{highlight}</AppText>
+        </View>)}
+      </View> : null}
+      <AppText size={11} color={colors.muted}>Generado con IA a partir de los datos disponibles del partido.</AppText>
+      {formatPreviewUpdatedAt(recap.recap?.generatedAt) ? <AppText size={11} color={colors.mutedSubtle}>Actualizado {formatPreviewUpdatedAt(recap.recap?.generatedAt)}</AppText> : null}
+    </> : recap.recap?.pending ? <AppText size={13} color={colors.muted}>El resumen se está generando. Puedes volver a consultarlo en un momento.</AppText> : recap.hasError ? <AppText size={13} color={colors.danger}>No pudimos generar el resumen en este momento.</AppText> : <AppText size={13} color={colors.muted}>Obtén un resumen rápido de lo ocurrido con los datos disponibles.</AppText>}
+    {!hasSummary ? <Pressable
+      accessibilityRole="button"
+      disabled={recap.isGenerating || inputsLoading}
+      onPress={() => void recap.generate()}
+      style={({ pressed }) => [{ minHeight: 46, borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, backgroundColor: colors.primary, opacity: recap.isGenerating || inputsLoading ? 0.65 : pressed ? 0.82 : 1 }]}
+    >
+      {recap.isGenerating ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
+      <AppText size={14} weight="bold" color="#FFFFFF">
+        {recap.isGenerating ? 'Generando resumen…' : recap.hasError ? 'Reintentar' : recap.recap?.pending ? 'Revisar resumen' : inputsLoading ? 'Cargando datos…' : 'Generar resumen'}
+      </AppText>
+    </Pressable> : null}
+  </Card>;
+}
+
+function hasValidFinalScore(match: Fixture): boolean {
+  return match.status === 'finished'
+    && Number.isInteger(match.homeGoals) && (match.homeGoals as number) >= 0
+    && Number.isInteger(match.awayGoals) && (match.awayGoals as number) >= 0;
 }
 
 function eventKey(event: FixtureEvent, index: number): string { const stableId = event.id?.trim(); return stableId || `${event.type}-${event.time ?? 'sin-minuto'}-${event.player ?? 'sin-jugador'}-${event.teamId ?? event.team ?? 'sin-equipo'}-${index}`; }
